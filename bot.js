@@ -20,6 +20,9 @@ const adminUpdateWizard = require('./scenes/adminUpdateScene');
 const adminBlockWizard = require('./scenes/adminBlockScene');
 const adminUnblockScene = require('./scenes/adminUnblockScene');
 
+// --- SAFETY: Normalize Admin ID once ---
+const ADMIN_ID = process.env.ADMIN_ID ? process.env.ADMIN_ID.trim() : "";
+
 const server = http.createServer((req, res) => {
   res.writeHead(200);
   res.end('Bot is Active');
@@ -41,28 +44,26 @@ const stage = new Scenes.Stage([
 ]);
 
 bot.use(session());
+bot.use(stage.middleware());
 
 /* =========================
-   🌍 GLOBAL NAVIGATION (Amharic)
+   🌍 GLOBAL NAVIGATION
 ========================= */
 
-// 🏠 ዋና ማውጫ (Home)
 stage.hears('🏠 ዋና ማውጫ', async (ctx) => {
     await ctx.scene.leave();
-    const isAdmin = ctx.from.id.toString() === process.env.ADMIN_ID;
+    const isAdmin = ctx.from.id.toString() === ADMIN_ID;
     return ctx.reply(
         "🏠 ወደ ዋና ማውጫ ተመልሰዋል።",
         isAdmin ? adminMenu : userMenu
     );
 });
 
-bot.use(stage.middleware());
-
 /* =========================
    HELPERS
 ========================= */
 const sendMainMenu = async (ctx) => {
-    const isAdmin = ctx.from.id.toString() === process.env.ADMIN_ID.trim();
+    const isAdmin = ctx.from.id.toString() === ADMIN_ID;
     const user = await User.findOne({ telegramId: ctx.from.id });
     
     let welcomeMsg = isAdmin ? "🛠 **የአስተዳዳሪ ሰሌዳ**" : `🙏 እንኳን ደህና መጡ ${user?.religiousName || ''}`;
@@ -81,13 +82,11 @@ bot.start(async (ctx) => {
 });
 
 /* =========================
-   👤 USER ACTIONS (Amharic)
+   👤 USER ACTIONS
 ========================= */
 
-// 📅 ቀጠሮ ለመያዝ
 bot.hears('📅 ቀጠሮ ለመያዝ', (ctx) => ctx.scene.enter('BOOKING_SCENE'));
 
-// 📋 የያዝኳቸው ቀጠሮዎች
 bot.hears('📋 የያዝኳቸው ቀጠሮዎች', async (ctx) => {
     try {
         const user = await User.findOne({ telegramId: ctx.from.id });
@@ -116,10 +115,11 @@ bot.hears('📋 የያዝኳቸው ቀጠሮዎች', async (ctx) => {
     }
 });
 
-// ❌ ቀጠሮ ለመሰረዝ
 bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
     try {
         const user = await User.findOne({ telegramId: ctx.from.id });
+        if (!user) return ctx.reply("እባክዎ መጀመሪያ /start በማለት ይመዝገቡ።");
+
         const now = new Date();
         const bookings = await Booking.find({ 
             userId: user._id, 
@@ -142,52 +142,58 @@ bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
     }
 });
 
-// Confirmation for unbooking
 bot.action(/^confirm_unbook_(.+)$/, async (ctx) => {
     try {
+        // Stop the loading spinner immediately
+        await ctx.answerCbQuery("በሂደት ላይ...");
+        
         const bookingId = ctx.match[1];
         const booking = await Booking.findByIdAndDelete(bookingId);
 
         if (booking) {
-            await ctx.answerCbQuery("ቀጠሮው ተሰርዟል።");
             await ctx.editMessageText(`✅ በ ${toEthioDisplay(booking.date)} በ ${toEthioTime(booking.startTime)} የነበረው ቀጠሮ ተሰርዟል።`);
             
             // Notify Admin
             await ctx.telegram.sendMessage(
-                process.env.ADMIN_ID, 
-                `⚠️ **የቀጠሮ ስረዛ ማሳሰቢያ**\nሙሉ ስም፡ ${booking.userName}\nየክርስትና ስም፡ ${booking.religiousName}\nቀን፡ ${toEthioDisplay(booking.date)}\nሰዓት፡ ${toEthioTime(booking.startTime)}`
+                ADMIN_ID, 
+                `⚠️ **የቀጠሮ ስረዛ ማሳሰቢያ**\n\n👤 ስም፦ ${booking.userName}\n⛪️ የክርስትና ስም፦ ${booking.religiousName}\n📅 ቀን፦ ${toEthioDisplay(booking.date)}\n🕒 ሰዓት፦ ${toEthioTime(booking.startTime)}`
             );
         } else {
-            await ctx.answerCbQuery("ቀጠሮው አልተገኘም።");
+            await ctx.reply("⚠️ ቀጠሮው ቀድሞ ተሰርዟል ወይም አልተገኘም።");
         }
     } catch (err) {
-        console.error(err);
-        await ctx.answerCbQuery("ስህተት ተከስቷል።");
+        console.error("Cancel Error:", err);
+        // Do not crash the bot, just inform the user
     }
 });
 
 /* =========================
-   🛠 ADMIN ACTIONS (Amharic)
+   🛠 ADMIN ACTIONS
 ========================= */
 
-// 📋 ሁሉንም ቀጠሮዎች እይ
 bot.hears('📋 ሁሉንም ቀጠሮዎች እይ', (ctx) => {
-    if (ctx.from.id.toString() === process.env.ADMIN_ID) ctx.scene.enter('ADMIN_SCENE');
+    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_SCENE');
 });
 
-// ⚙️ የጊዜ ሰሌዳ ቀይር
 bot.hears('⚙️ የጊዜ ሰሌዳ አስገባ/ቀይር', (ctx) => {
-    if (ctx.from.id.toString() === process.env.ADMIN_ID) ctx.scene.enter('ADMIN_UPDATE_AVAILABILITY');
+    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_UPDATE_AVAILABILITY');
 });
 
-// 🚫 ሰዓት ዝጋ
 bot.hears('🚫 ሰዓት ዝጋ', (ctx) => {
-    if (ctx.from.id.toString() === process.env.ADMIN_ID) ctx.scene.enter('ADMIN_BLOCK_TIME');
+    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_BLOCK_TIME');
 });
 
-// 🔓 የተዘጉ ሰዓቶች
 bot.hears('🔓 የተዘጉ ሰዓቶች', (ctx) => {
-    if (ctx.from.id.toString() === process.env.ADMIN_ID) ctx.scene.enter('ADMIN_UNBLOCK_SCENE');
+    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_UNBLOCK_SCENE');
+});
+
+/* =========================
+   🚨 GLOBAL ERROR HANDLER (The Ultimate Safety)
+========================= */
+bot.catch((err, ctx) => {
+  console.error(`Ooops, encountered an error for ${ctx.updateType}`, err);
+  // Optional: Notify the user that something went wrong without crashing
+  ctx.reply("❌ ይቅርታ፣ ያልታሰበ ስህተት ተከስቷል። እባክዎ ጥቂት ቆይተው እንደገና ይሞክሩ።").catch(e => console.error(e));
 });
 
 const PORT = process.env.PORT || 8000;
@@ -195,11 +201,9 @@ server.listen(PORT, () => {
   console.log(`Keep-alive server is listening on port ${PORT}`);
 });
 
-// Launch your bot
 bot.launch()
-  .then(() => console.log('✅ Bot is online and healthy/🤖 ቦቱ ስራ ጀምሯል - የኢትዮጵያ ዘመን አቆጣጠር በርቷል'))
+  .then(() => console.log('✅ Bot is online / 🤖 ቦቱ ስራ ጀምሯል'))
   .catch((err) => console.error('❌ Bot launch failed:', err));
 
-  // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));

@@ -15,14 +15,18 @@ const adminBlockWizard = new Scenes.WizardScene(
             const ethioLabel = toEthioDisplay(d.toISODate());
             buttons.push(Markup.button.callback(ethioLabel, `blockdate_${d.toISODate()}`));
         }
-        await ctx.reply("🚫 መዝጋት የሚፈልጉትን ቀን ይምረጡ፦", Markup.inlineKeyboard(buttons, { columns: 2 }));
+        await ctx.reply("🚫 **ሰዓት መዝጊያ**\nለመዝጋት የሚፈልጉትን ቀን ይምረጡ፦", Markup.inlineKeyboard(buttons, { columns: 2 }));
         return ctx.wizard.next();
     },
+
     // 2. Block Interval vs Whole Day
     async (ctx) => {
-        if (!ctx.callbackQuery) return;
-        ctx.wizard.state.date = ctx.callbackQuery.data.replace('blockdate_', '');
-        const displayDate = toEthioDisplay(ctx.wizard.state.date);
+        if (!ctx.callbackQuery) return ctx.reply("⚠️ እባክዎ ቀን ይምረጡ።");
+        try { await ctx.answerCbQuery(); } catch (e) {}
+
+        const date = ctx.callbackQuery.data.replace('blockdate_', '');
+        ctx.wizard.state.date = date;
+        const displayDate = toEthioDisplay(date);
         
         await ctx.editMessageText(`${displayDate}ን እንዴት መዝጋት ይፈልጋሉ?`, 
             Markup.inlineKeyboard([
@@ -33,9 +37,15 @@ const adminBlockWizard = new Scenes.WizardScene(
         );
         return ctx.wizard.next();
     },
+
     // 3. Handle Choice
     async (ctx) => {
+        if (!ctx.callbackQuery) return ctx.reply("⚠️ እባክዎ ምርጫዎን ይጫኑ።");
+        try { await ctx.answerCbQuery(); } catch (e) {}
+
         const choice = ctx.callbackQuery.data;
+
+        if (choice === 'reenter') return ctx.scene.reenter();
         
         if (choice === 'mode_interval') {
             await ctx.editMessageText(`🕒 መዘጋት የሚጀምርበትን ሰዓት ይምረጡ፦`, generateTimeButtons('bstart'));
@@ -58,63 +68,120 @@ const adminBlockWizard = new Scenes.WizardScene(
                         [Markup.button.callback("❌ ይቅር / ተመለስ", "reenter")]
                     ])
                 );
+                // Skip to final step for full day handling
                 return ctx.wizard.selectStep(4); 
             } else {
                 return executeFullDayBlock(ctx);
             }
         }
     },
-    // 4. Interval logic (Start)
+
+    // 4. Interval logic (Start Time picked)
     async (ctx) => {
+        if (!ctx.callbackQuery || !ctx.callbackQuery.data.startsWith('bstart_')) {
+            return ctx.reply("⚠️ እባክዎ ሰዓት ይምረጡ።");
+        }
+        try { await ctx.answerCbQuery(); } catch (e) {}
+
         ctx.wizard.state.startBlock = ctx.callbackQuery.data.replace('bstart_', '');
         await ctx.editMessageText(`🕒 መዘጋት የሚያበቃበትን ሰዓት ይምረጡ፦`, generateTimeButtons('bend'));
         return ctx.wizard.next();
     },
-    // 5. Finalize Block
+
+    // 5. Finalize Block (Interval or Full Day)
     async (ctx) => {
-        const action = ctx.callbackQuery?.data;
+        if (!ctx.callbackQuery) return ctx.reply("⚠️ እባክዎ ምርጫዎን ይጫኑ።");
+        try { await ctx.answerCbQuery(); } catch (e) {}
+
+        const action = ctx.callbackQuery.data;
         
+        // Handling Full Day Cancellation
         if (action === 'confirm_full_cancel') {
-            const bookings = ctx.wizard.state.toCancel;
+            const bookings = ctx.wizard.state.toCancel || [];
             const ethioDate = toEthioDisplay(ctx.wizard.state.date);
             const msg = `📢 **ከአባታችን የተላከ መልዕክት፦**\n\nያልታሰበ አስቸኳይ የቤተክርስቲያን ስራ ስላጋጠመ በ ${ethioDate} የነበረዎት ቀጠሮ ተሰርዟል። እባክዎ በቦቱ አማካኝነት ለሌላ ቀን ቀጠሮ ይያዙ። ስለተፈጠረው መስተጓጎል ይቅርታ እንጠይቃለን። ወስብሐት ለእግዚአብሔር።`;
             
             for (const b of bookings) {
                 try {
                     const user = await User.findById(b.userId);
-                    await ctx.telegram.sendMessage(user.telegramId, msg, { parse_mode: 'Markdown' });
+                    if (user) {
+                        await ctx.telegram.sendMessage(user.telegramId, msg, { parse_mode: 'Markdown' });
+                    }
                 } catch (e) { console.log("Failed to notify user:", b.userName); }
                 await Booking.findByIdAndDelete(b._id);
             }
             return executeFullDayBlock(ctx);
         }
 
-        // Finalizing interval block
-        const endBlock = ctx.callbackQuery.data.replace('bend_', '');
-        const block = new Booking({
-            userName: "ADMIN_BLOCK",
-            date: ctx.wizard.state.date,
-            startTime: ctx.wizard.state.startBlock,
-            endTime: endBlock,
-            timestamp: DateTime.fromISO(`${ctx.wizard.state.date}T${ctx.wizard.state.startBlock}`, { zone: process.env.TIMEZONE }).toJSDate()
-        });
-        await block.save();
-        await ctx.editMessageText(`✅ በ ${toEthioDisplay(ctx.wizard.state.date)} ከ ${toEthioTime(ctx.wizard.state.startBlock)} እስከ ${toEthioTime(endBlock)} ያለው ሰዓት ተዘግቷል።`);
-        return ctx.scene.leave();
+        if (action === 'reenter') return ctx.scene.reenter();
+
+        // Finalizing Interval Block
+        if (action.startsWith('bend_')) {
+            const endBlock = action.replace('bend_', '');
+            const dateStr = ctx.wizard.state.date;
+            const startStr = ctx.wizard.state.startBlock;
+
+            // --- THE CRITICAL FIX FOR "INVALID DATE" ---
+            if (!dateStr || !startStr) {
+                await ctx.reply("❌ ስህተት ተከስቷል። እባክዎ እንደገና ይሞክሩ።");
+                return ctx.scene.leave();
+            }
+
+            const timestamp = DateTime.fromISO(`${dateStr}T${startStr}`, { zone: process.env.TIMEZONE });
+
+            if (!timestamp.isValid) {
+                console.error("Invalid Date Logic:", dateStr, startStr);
+                await ctx.reply("❌ የተመረጠው ቀን ወይም ሰዓት አልተሳካም።");
+                return ctx.scene.leave();
+            }
+
+            try {
+                const block = new Booking({
+                    userName: "ADMIN_BLOCK",
+                    religiousName: "ADMIN",
+                    phoneNumber: "ADMIN",
+                    date: dateStr,
+                    startTime: startStr,
+                    endTime: endBlock,
+                    timestamp: timestamp.toJSDate()
+                });
+                await block.save();
+                await ctx.editMessageText(`✅ በ ${toEthioDisplay(dateStr)} ከ ${toEthioTime(startStr)} እስከ ${toEthioTime(endBlock)} ያለው ሰዓት ተዘግቷል።`);
+            } catch (err) {
+                console.error(err);
+                await ctx.reply("❌ እገዳውን መመዝገብ አልተሳካም።");
+            }
+            return ctx.scene.leave();
+        }
     }
 );
 
 // Helper function to create a block from 00:00 to 23:59
 async function executeFullDayBlock(ctx) {
-    const block = new Booking({
-        userName: "ADMIN_BLOCK",
-        date: ctx.wizard.state.date,
-        startTime: "00:00",
-        endTime: "23:59",
-        timestamp: DateTime.fromISO(`${ctx.wizard.state.date}T00:00`, { zone: process.env.TIMEZONE }).toJSDate()
-    });
-    await block.save();
-    await ctx.reply(`🚫 በ ${toEthioDisplay(ctx.wizard.state.date)} ሙሉ ቀኑ ተዘግቷል። ለማንም ክፍት አይሆንም።`);
+    const dateStr = ctx.wizard.state.date;
+    const timestamp = DateTime.fromISO(`${dateStr}T00:00`, { zone: process.env.TIMEZONE });
+
+    if (!timestamp.isValid) {
+        await ctx.reply("❌ ቀኑን መዝጋት አልተቻለም።");
+        return ctx.scene.leave();
+    }
+
+    try {
+        const block = new Booking({
+            userName: "ADMIN_BLOCK",
+            religiousName: "ADMIN",
+            phoneNumber: "ADMIN",
+            date: dateStr,
+            startTime: "00:00",
+            endTime: "23:59",
+            timestamp: timestamp.toJSDate()
+        });
+        await block.save();
+        await ctx.reply(`🚫 በ ${toEthioDisplay(dateStr)} ሙሉ ቀኑ ተዘግቷል። ለማንም ክፍት አይሆንም።`);
+    } catch (e) {
+        console.error(e);
+        await ctx.reply("❌ የቀኑ እገዳ አልተሳካም።");
+    }
     return ctx.scene.leave();
 }
 
