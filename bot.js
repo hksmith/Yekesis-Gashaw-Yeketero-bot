@@ -62,7 +62,7 @@ bot.use(stage.middleware());
    HELPERS
 ========================= */
 const sendMainMenu = async (ctx) => {
-    const isAdmin = ctx.from.id.toString() === process.env.ADMIN_ID;
+    const isAdmin = ctx.from.id.toString() === process.env.ADMIN_ID.trim();
     const user = await User.findOne({ telegramId: ctx.from.id });
     
     let welcomeMsg = isAdmin ? "🛠 **የአስተዳዳሪ ሰሌዳ**" : `🙏 እንኳን ደህና መጡ ${user?.religiousName || ''}`;
