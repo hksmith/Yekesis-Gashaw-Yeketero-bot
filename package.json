@@ -1,4 +1,11 @@
 {
+  "name": "yekesis-gashaw-bot",
+  "version": "1.0.0",
+  "description": "Ethiopian Orthodox Tewahedo Booking Bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
   "dependencies": {
     "dotenv": "^17.2.3",
     "ethiopian-date": "^0.0.6",
