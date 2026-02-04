@@ -20,6 +20,11 @@ const adminUpdateWizard = require('./scenes/adminUpdateScene');
 const adminBlockWizard = require('./scenes/adminBlockScene');
 const adminUnblockScene = require('./scenes/adminUnblockScene');
 
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Bot is Active');
+});
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
 connectDB();
 
@@ -185,13 +190,16 @@ bot.hears('🔓 የተዘጉ ሰዓቶች', (ctx) => {
     if (ctx.from.id.toString() === process.env.ADMIN_ID) ctx.scene.enter('ADMIN_UNBLOCK_SCENE');
 });
 
-http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Bot is running!');
-}).listen(process.env.PORT || 8080);
+const PORT = process.env.PORT || 8000;
+server.listen(PORT, () => {
+  console.log(`Keep-alive server is listening on port ${PORT}`);
+});
 
 // Launch your bot
 bot.launch()
   .then(() => console.log('✅ Bot is online and healthy/🤖 ቦቱ ስራ ጀምሯል - የኢትዮጵያ ዘመን አቆጣጠር በርቷል'))
   .catch((err) => console.error('❌ Bot launch failed:', err));
-  
+
+  // Enable graceful stop
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
