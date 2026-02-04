@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Telegraf, Scenes, session, Markup } = require('telegraf');
 const { DateTime } = require('luxon');
 const connectDB = require('./database');
+const http = require('http');
 
 // Models
 const User = require('./models/User');
@@ -184,6 +185,13 @@ bot.hears('🔓 የተዘጉ ሰዓቶች', (ctx) => {
     if (ctx.from.id.toString() === process.env.ADMIN_ID) ctx.scene.enter('ADMIN_UNBLOCK_SCENE');
 });
 
-bot.launch().then(() => {
-    console.log('🤖 ቦቱ ስራ ጀምሯል - የኢትዮጵያ ዘመን አቆጣጠር በርቷል');
-});
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Bot is running!');
+}).listen(process.env.PORT || 8080);
+
+// Launch your bot
+bot.launch()
+  .then(() => console.log('✅ Bot is online and healthy/🤖 ቦቱ ስራ ጀምሯል - የኢትዮጵያ ዘመን አቆጣጠር በርቷል'))
+  .catch((err) => console.error('❌ Bot launch failed:', err));
+  
