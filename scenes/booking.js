@@ -33,7 +33,7 @@ const bookingScene = new Scenes.WizardScene(
         // Look ahead 14 days
         for (let i = 1; i <= 14; i++) {
             const date = DateTime.now().setZone(process.env.TIMEZONE).plus({ days: i });
-            
+
             // Only show the day if the Admin has set availability for that day of the week
             if (availableConfigs.find(d => d.dayOfWeek === date.weekday)) {
                 const label = getDayLabel(date);
@@ -61,15 +61,15 @@ const bookingScene = new Scenes.WizardScene(
         if (!ctx.callbackQuery) {
             return ctx.reply("⚠️ እባክዎ ከላይ ካሉት አማራጮች አንዱን ይጫኑ።");
         }
-        
+
         const selectedDate = ctx.callbackQuery.data.replace('date_', '');
         ctx.wizard.state.selectedDate = selectedDate;
 
         const user = await User.findOne({ telegramId: ctx.from.id });
-        const existing = await Booking.findOne({ 
-            userId: user._id, 
-            date: selectedDate, 
-            userName: { $ne: "ADMIN_BLOCK" } 
+        const existing = await Booking.findOne({
+            userId: user._id,
+            date: selectedDate,
+            userName: { $ne: "ADMIN_BLOCK" }
         });
 
         if (existing) {
@@ -83,7 +83,7 @@ const bookingScene = new Scenes.WizardScene(
 
         if (slots.length === 0) {
             await ctx.reply("ይቅርታ፣ የተመረጠው ቀን ሙሉ በሙሉ ተይዟል። እባክዎ ሌላ ቀን ይምረጡ።");
-            return ctx.scene.selectStep(0); 
+            return ctx.scene.selectStep(0);
         }
 
         const nextSlot = slots[0];
@@ -105,8 +105,17 @@ const bookingScene = new Scenes.WizardScene(
 
     // Step 3: Finalize
     async (ctx) => {
-        if (!ctx.callbackQuery || ctx.callbackQuery.data === 'cancel') {
-            await ctx.answerCbQuery("ተሰርዟል");
+        if (!ctx.callbackQuery) {
+            return ctx.reply("⚠️ እባክዎ ከላይ ያለውን ቁልፍ በመጫን ያረጋግጡ ወይም 'ሰርዝ' የሚለውን ይጫኑ።");
+        }
+
+        // 2. Handle the "Cancel" button click
+        if (ctx.callbackQuery.data === 'cancel') {
+            try {
+                await ctx.answerCbQuery("ተሰርዟል");
+            } catch (e) { /* Ignore if answer fails */ }
+
+            await ctx.editMessageText("❌ ቀጠሮው ተሰርዟል።");
             return ctx.scene.leave();
         }
 
@@ -121,7 +130,7 @@ const bookingScene = new Scenes.WizardScene(
                 startTime: ctx.wizard.state.slotVal,
                 timestamp: DateTime.fromISO(`${ctx.wizard.state.selectedDate}T${ctx.wizard.state.slotVal}`, { zone: process.env.TIMEZONE }).toJSDate()
             });
-            
+
             await booking.save();
 
             const ethioDate = toEthioDisplay(ctx.wizard.state.selectedDate);
@@ -129,7 +138,7 @@ const bookingScene = new Scenes.WizardScene(
                 `✅ ቀጠሮዎ በተሳካ ሁኔታ ተይዟል!\n\n📅 ቀን፦ ${ethioDate}\n🕒 ሰዓት፦ ${ctx.wizard.state.slotDisp}\n\nሰዓት አክብረው እንደሚገኙ አንጠራጠርም።\nሰዓት ማክበር የጥሩ ክርስትያን መገለጫ ነው።\nእግዚአብሔር ይርዳን።`
             );
 
-            await ctx.telegram.sendMessage(process.env.ADMIN_ID, 
+            await ctx.telegram.sendMessage(process.env.ADMIN_ID,
                 `🔔 **አዲስ ቀጠሮ ተይዟል**\n\n👤 ስም፦ ${user.formalName}\n⛪️ የክርስትና ስም፦ ${user.religiousName}\n📅 ቀን፦ ${ethioDate}\n🕒 ሰዓት፦ ${ctx.wizard.state.slotDisp}`
             );
 
