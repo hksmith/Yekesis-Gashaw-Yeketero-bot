@@ -9,8 +9,7 @@ const { toEthioDisplay, toEthioTime } = require('../utils/ethioConverter');
 const ESCAPE_ACTIONS = [
     '🏠 ዋና ማውጫ',
     '📋 የያዝኳቸው ቀጠሮዎች',
-    '❌ ቀጠሮ ለመሰረዝ',
-    '📅 ቀጠሮ ለመያዝ'
+    '❌ ቀጠሮ ለመሰረዝ'
 ];
 
 const bookingWizard = new Scenes.WizardScene(
@@ -20,6 +19,8 @@ const bookingWizard = new Scenes.WizardScene(
     async (ctx) => {
         // If they send a text message
         if (ctx.message?.text && !ctx.callbackQuery) {
+            if (ctx.message.text === '📅 ቀጠሮ ለመያዝ') { return; }
+            
             if (ESCAPE_ACTIONS.includes(ctx.message.text)) {
                 await ctx.scene.leave();
                 return ctx.reply(
