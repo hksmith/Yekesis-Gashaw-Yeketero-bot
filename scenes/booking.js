@@ -6,6 +6,13 @@ const User = require('../models/User');
 const { userMenu } = require('../utils/keyboards');
 const { toEthioDisplay, toEthioTime } = require('../utils/ethioConverter');
 
+const ESCAPE_ACTIONS = [
+    '🏠 ዋና ማውጫ',
+    '📋 የያዝኳቸው ቀጠሮዎች',
+    '❌ ቀጠሮ ለመሰረዝ',
+    '📅 ቀጠሮ ለመያዝ'
+];
+
 const bookingWizard = new Scenes.WizardScene(
     'BOOKING_SCENE',
 
@@ -13,12 +20,16 @@ const bookingWizard = new Scenes.WizardScene(
     async (ctx) => {
         // If they send a text message
         if (ctx.message?.text && !ctx.callbackQuery) {
-            if (ctx.message.text === '🏠 ዋና ማውጫ') {
+            if (ESCAPE_ACTIONS.includes(ctx.message.text)) {
                 await ctx.scene.leave();
-                return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
+                return ctx.reply(
+                    "🏠 ከቀጠሮ ሂደት ወጥተዋል።",
+                    userMenu
+                );
             }
-            // Delete what they typed and warn them
-            try { await ctx.deleteMessage(); } catch (e) {}
+
+            // Anything else is truly invalid
+            try { await ctx.deleteMessage(); } catch (e) { }
             return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ቀን ይምረጡ።");
         }
 
@@ -35,7 +46,7 @@ const bookingWizard = new Scenes.WizardScene(
         for (let i = 0; i < 14; i++) {
             const d = now.plus({ days: i });
             const config = availableDays.find(a => a.dayOfWeek === d.weekday);
-            
+
             if (config) {
                 buttons.push([Markup.button.callback(toEthioDisplay(d.toISODate()), `date_${d.toISODate()}`)]);
             }
@@ -57,12 +68,12 @@ const bookingWizard = new Scenes.WizardScene(
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
             }
-            try { await ctx.deleteMessage(); } catch (e) {}
+            try { await ctx.deleteMessage(); } catch (e) { }
             return ctx.reply("⚠️ እባክዎ የቀረበውን ቀን ቁልፍ በመጫን ይምረጡ።");
         }
 
         if (!ctx.callbackQuery || !ctx.callbackQuery.data.startsWith('date_')) return;
-        try { await ctx.answerCbQuery(); } catch (e) {}
+        try { await ctx.answerCbQuery(); } catch (e) { }
 
         const selectedDate = ctx.callbackQuery.data.replace('date_', '');
         ctx.wizard.state.date = selectedDate;
@@ -102,14 +113,14 @@ const bookingWizard = new Scenes.WizardScene(
             const timeStr = curr.toFormat('HH:mm');
             if (!bookedTimes.includes(timeStr)) {
                 firstAvailable = timeStr;
-                break; 
+                break;
             }
             curr = curr.plus({ minutes: config.slotDuration + config.gap });
         }
 
         if (!firstAvailable) {
             await ctx.editMessageText(`⚠️ ይቅርታ፣ በ${toEthioDisplay(selectedDate)} ሁሉም ቀጠሮዎች ተይዘዋል።`);
-            return ctx.scene.leave(); 
+            return ctx.scene.leave();
         }
 
         ctx.wizard.state.startTime = firstAvailable;
@@ -134,7 +145,7 @@ const bookingWizard = new Scenes.WizardScene(
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
             }
-            try { await ctx.deleteMessage(); } catch (e) {}
+            try { await ctx.deleteMessage(); } catch (e) { }
             return ctx.reply("⚠️ እባክዎ የቀረበውን ሰዓት ለመቀበል ✅ ወይም ለመሰረዝ ❌ ቁልፎቹን ይጠቀሙ።");
         }
 
@@ -142,13 +153,13 @@ const bookingWizard = new Scenes.WizardScene(
         const action = ctx.callbackQuery.data;
 
         if (action === 'cancel_booking') {
-            try { await ctx.answerCbQuery(); } catch (e) {}
+            try { await ctx.answerCbQuery(); } catch (e) { }
             await ctx.editMessageText("❌ ቀጠሮው አልተያዘም። ወደ ዋና ማውጫ ተመልሰዋል።");
             return ctx.scene.leave();
         }
 
         if (action === 'confirm_slot') {
-            try { await ctx.answerCbQuery(); } catch (e) {}
+            try { await ctx.answerCbQuery(); } catch (e) { }
             const user = await User.findOne({ telegramId: ctx.from.id });
             const { date, startTime } = ctx.wizard.state;
 
@@ -174,7 +185,7 @@ const bookingWizard = new Scenes.WizardScene(
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
             }
-            try { await ctx.deleteMessage(); } catch (e) {}
+            try { await ctx.deleteMessage(); } catch (e) { }
             return ctx.reply("⚠️ እባክዎ '✅ አዎ፣ አረጋግጥ' የሚለውን በመጫን ቀጠሮዎን ያጠናቅቁ።");
         }
 
@@ -182,10 +193,10 @@ const bookingWizard = new Scenes.WizardScene(
         const action = ctx.callbackQuery.data;
 
         if (action === 'finalize_booking') {
-            try { await ctx.answerCbQuery(); } catch (e) {}
+            try { await ctx.answerCbQuery(); } catch (e) { }
             const user = await User.findOne({ telegramId: ctx.from.id });
             const { date, startTime } = ctx.wizard.state;
-            
+
             // Double check race condition
             const exists = await Booking.findOne({ date, startTime });
             if (exists) {
@@ -211,12 +222,12 @@ const bookingWizard = new Scenes.WizardScene(
                 `🕒 ሰዓት፦ ${toEthioTime(startTime)}\n\n` +
                 `እባክዎ በሰዓቱ ይገኙ።`
             );
-            
+
             // Notify Admin
             try {
-                 await ctx.telegram.sendMessage(process.env.ADMIN_ID, 
+                await ctx.telegram.sendMessage(process.env.ADMIN_ID,
                     `📢 **አዲስ ቀጠሮ**\n👤 ${user.religiousName || user.fullName}\n📅 ${toEthioDisplay(date)} - ${toEthioTime(startTime)}`);
-            } catch (err) {}
+            } catch (err) { }
 
             return ctx.scene.leave();
         }
