@@ -197,8 +197,11 @@ bot.catch((err, ctx) => {
 // 🌐 Global text guard (catch-all for unhandled messages)
 bot.on('text', async (ctx) => {
     // Ignore messages from inside scenes
-    if (ctx.scene.current) return;
+    if (ctx.scene?.current) return;
     if (!ctx.message?.text) return;
+    
+    // Check if there's a slash command
+    if (ctx.message.text.startsWith('/')) return;
 
     const isAdmin = ctx.from.id.toString() === ADMIN_ID;
 
@@ -220,18 +223,19 @@ bot.on('text', async (ctx) => {
 
     const allowedCommands = isAdmin ? userCommands.concat(adminCommands) : userCommands;
 
-    // If the text is **one of the allowed commands**, do nothing
+    // If the text is one of the allowed commands, do nothing
     if (allowedCommands.includes(ctx.message.text)) return;
 
-    // Otherwise, delete and warn
-    try { await ctx.deleteMessage(); } catch (e) { }
-
+    // Check for specific active operations
     if (ctx.session?.activeOperation === 'unbooking_selection') {
-        return ctx.reply("⚠️ እባክዎ ከተሰጡት አማራጮች ይምረጡ። ያለ ምርጫ የተጻፈ ጽሑፍ ተቀባይነት የለውም።",
-            Markup.keyboard([['🏠 ዋና ማውጫ']]).resize());
+        try { await ctx.deleteMessage(); } catch (e) { /* ignore errors */ }
+        return ctx.reply("⚠️ እባክዎ ከተሰጡት ቀን ለመሰረዝ የሚፈልጉትን ቀጠሮ ይምረጡ።");
     }
 
-    return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ይምረጡ።");
+    // General unhandled message case
+    try { await ctx.deleteMessage(); } catch (e) { /* ignore errors */ }
+    return ctx.reply("⚠️ እባክዎ ከተሰጡት አማራጮች ይምረጡ። ያለ ምርጫ የተጻፈ ጽሑፍ ተቀባይነት የለውም።",
+        Markup.keyboard([['🏠 ዋና ማውጫ']]).resize());
 });
 
 const PORT = process.env.PORT || 8000;
