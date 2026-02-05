@@ -40,7 +40,7 @@ const bookingWizard = new Scenes.WizardScene(
                 return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ቀን ይምረጡ።");
             }
         }
-        
+
         const availableDays = await Availability.find({}).sort({ dayOfWeek: 1 });
         if (availableDays.length === 0) {
             await ctx.reply("⚠️ ይቅርታ፣ በአሁኑ ሰዓት ክፍት የሆኑ ቀናት የሉም።");

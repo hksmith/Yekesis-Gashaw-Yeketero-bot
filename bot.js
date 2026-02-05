@@ -186,6 +186,41 @@ bot.catch((err, ctx) => {
   }
 });
 
+// 🌐 Global text guard (catch-all for unhandled messages)
+bot.on('text', async (ctx) => {
+    // Ignore messages from inside scenes
+    if (ctx.scene.current) return;
+    if (!ctx.message?.text) return;
+
+    const isAdmin = ctx.from.id.toString() === ADMIN_ID;
+
+    // Allowed options for users
+    const userCommands = [
+        '🏠 ዋና ማውጫ',
+        '📅 ቀጠሮ ለመያዝ',
+        '📋 የያዝኳቸው ቀጠሮዎች',
+        '❌ ቀጠሮ ለመሰረዝ'
+    ];
+
+    // Allowed options for admins
+    const adminCommands = [
+        '📋 ሁሉንም ቀጠሮዎች እይ',
+        '⚙️ የጊዜ ሰሌዳ አስገባ/ቀይር',
+        '🚫 ሰዓት ዝጋ',
+        '🔓 የተዘጉ ሰዓቶች'
+    ];
+
+    const allowedCommands = isAdmin ? userCommands.concat(adminCommands) : userCommands;
+
+    // If the text is **one of the allowed commands**, do nothing
+    if (allowedCommands.includes(ctx.message.text)) return;
+
+    // Otherwise, delete and warn
+    try { await ctx.deleteMessage(); } catch (e) { }
+
+    return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ይምረጡ።");
+});
+
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
   console.log(`Keep-alive server is listening on port ${PORT}`);
