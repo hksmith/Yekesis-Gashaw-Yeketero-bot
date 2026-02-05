@@ -11,6 +11,7 @@ const bookingWizard = new Scenes.WizardScene(
 
     // --- Step 1: Pick a Date ---
     async (ctx) => {
+        // Safety: Global Home check
         if (ctx.message && ctx.message.text === '🏠 ዋና ማውጫ') {
             await ctx.scene.leave();
             return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
@@ -43,7 +44,7 @@ const bookingWizard = new Scenes.WizardScene(
         return ctx.wizard.next();
     },
 
-    // --- Step 2: Show ONLY the First Available Slot ---
+    // --- Step 2: DUPLICATE CHECK + STRICT CONSECUTIVE SLOT ---
     async (ctx) => {
         if (ctx.message) {
             if (ctx.message.text === '🏠 ዋና ማውጫ') {
@@ -59,6 +60,22 @@ const bookingWizard = new Scenes.WizardScene(
         const selectedDate = ctx.callbackQuery.data.replace('date_', '');
         ctx.wizard.state.date = selectedDate;
 
+        // --- 🛡️ ADDED: Duplicate Check ---
+        const user = await User.findOne({ telegramId: ctx.from.id });
+        const alreadyBooked = await Booking.findOne({ 
+            userId: user._id, 
+            date: selectedDate 
+        });
+
+        if (alreadyBooked) {
+            await ctx.editMessageText(
+                `⚠️ **ይቅርታ!**\n\nበ ${toEthioDisplay(selectedDate)} ቀድሞ የያዙት ቀጠሮ አለ። በቀን አንድ ቀጠሮ ብቻ ነው የሚፈቀደው።`,
+                Markup.inlineKeyboard([[Markup.button.callback("🏠 ተመለስ", "cancel_booking")]])
+            );
+            // Move to next step but it will be handled by the cancel button or home button
+            return ctx.wizard.next(); 
+        }
+
         const dateObj = DateTime.fromISO(selectedDate);
         const config = await Availability.findOne({ dayOfWeek: dateObj.weekday });
 
@@ -67,18 +84,16 @@ const bookingWizard = new Scenes.WizardScene(
             return ctx.scene.leave();
         }
 
-        // 1. Fetch existing bookings
+        // --- 📅 STRICT CONSECUTIVE LOGIC: Find FIRST available ---
         const existingBookings = await Booking.find({ date: selectedDate });
         const bookedTimes = existingBookings.map(b => b.startTime);
 
-        // 2. Find the FIRST available slot
         let firstAvailable = null;
         let curr = DateTime.fromISO(`${selectedDate}T${config.startTime}`, { zone: process.env.TIMEZONE });
         const end = DateTime.fromISO(`${selectedDate}T${config.endTime}`, { zone: process.env.TIMEZONE });
         const now = DateTime.now().setZone(process.env.TIMEZONE);
 
         while (curr < end) {
-            // Skip past times if the date is today
             if (selectedDate === now.toISODate() && curr <= now) {
                 curr = curr.plus({ minutes: config.slotDuration + config.gap });
                 continue;
@@ -87,13 +102,13 @@ const bookingWizard = new Scenes.WizardScene(
             const timeStr = curr.toFormat('HH:mm');
             if (!bookedTimes.includes(timeStr)) {
                 firstAvailable = timeStr;
-                break; // Stop at the very first opening found
+                break; 
             }
             curr = curr.plus({ minutes: config.slotDuration + config.gap });
         }
 
         if (!firstAvailable) {
-            await ctx.editMessageText(`⚠️ ይቅርታ፣ በ${toEthioDisplay(selectedDate)} ሁሉም ቀጠሮዎች ተይዘዋል። እባክዎ ሌላ ቀን ይምረጡ።`);
+            await ctx.editMessageText(`⚠️ ይቅርታ፣ በ${toEthioDisplay(selectedDate)} ሁሉም ቀጠሮዎች ተይዘዋል።`);
             return ctx.scene.leave(); 
         }
 
@@ -101,7 +116,7 @@ const bookingWizard = new Scenes.WizardScene(
 
         await ctx.editMessageText(
             `📅 **ቀን፦** ${toEthioDisplay(selectedDate)}\n` +
-            `🕒 **የሚቀጥለው ክፍት ሰዓት፦** ${toEthioTime(firstAvailable)}\n\n` +
+            `🕒 **ክፍት ሰዓት፦** ${toEthioTime(firstAvailable)}\n\n` +
             `በዚህ ሰዓት መገኘት ይችላሉ?`,
             Markup.inlineKeyboard([
                 [Markup.button.callback("✅ አዎ፣ እችላለሁ", "confirm_slot")],
@@ -114,12 +129,9 @@ const bookingWizard = new Scenes.WizardScene(
 
     // --- Step 3: Final Confirmation ---
     async (ctx) => {
-        if (ctx.message) {
-            if (ctx.message.text === '🏠 ዋና ማውጫ') {
-                await ctx.scene.leave();
-                return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
-            }
-            return ctx.reply("⚠️ እባክዎ የቀረበውን ሰዓት ያረጋግጡ።");
+        if (ctx.message && ctx.message.text === '🏠 ዋና ማውጫ') {
+            await ctx.scene.leave();
+            return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
         }
 
         if (!ctx.callbackQuery) return;
@@ -152,7 +164,7 @@ const bookingWizard = new Scenes.WizardScene(
         }
     },
 
-    // --- Step 4: Save to Database ---
+    // --- Step 4: Final Database Save ---
     async (ctx) => {
         if (ctx.message && ctx.message.text === '🏠 ዋና ማውጫ') {
             await ctx.scene.leave();
@@ -168,7 +180,7 @@ const bookingWizard = new Scenes.WizardScene(
             const user = await User.findOne({ telegramId: ctx.from.id });
             const { date, startTime } = ctx.wizard.state;
             
-            // Double check availability (Race condition)
+            // Safety Double Check (Race condition)
             const exists = await Booking.findOne({ date, startTime });
             if (exists) {
                 await ctx.editMessageText("⚠️ ይቅርታ! ይህ ሰዓት አሁን ተይዟል። እባክዎ እንደገና ይሞክሩ።");
@@ -205,13 +217,13 @@ const bookingWizard = new Scenes.WizardScene(
         }
 
         if (action === 'cancel_booking') {
-            await ctx.editMessageText("❌ ቀጠሮው ተሰርዟል ወይም አልተጠናቀቀም።");
+            await ctx.editMessageText("❌ ቀጠሮው ተሰርዟል።");
             return ctx.scene.leave();
         }
     }
 );
 
-// Global interrupt
+// Global interrupt for this scene
 bookingWizard.hears('🏠 ዋና ማውጫ', async (ctx) => {
     await ctx.scene.leave();
     return ctx.reply('🏠 ወደ ዋና ማውጫ ተመልሰዋል።', userMenu);
