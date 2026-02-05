@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Telegraf, Scenes, session, Markup } = require('telegraf');
+const { setupCronJobs } = require('./utils/cronJobs');
 const connectDB = require('./database');
 const http = require('http');
 
@@ -29,6 +30,9 @@ const server = http.createServer((req, res) => {
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 connectDB();
+
+// Start the cron job
+setupCronJobs(bot);
 
 /* =========================
    SCENE STAGE

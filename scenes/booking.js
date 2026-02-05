@@ -11,10 +11,15 @@ const bookingWizard = new Scenes.WizardScene(
 
     // --- Step 1: Pick a Date ---
     async (ctx) => {
-        // Safety: Global Home check
-        if (ctx.message && ctx.message.text === '🏠 ዋና ማውጫ') {
-            await ctx.scene.leave();
-            return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
+        // If they send a text message
+        if (ctx.message) {
+            if (ctx.message.text === '🏠 ዋና ማውጫ') {
+                await ctx.scene.leave();
+                return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
+            }
+            // Delete what they typed and warn them
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ቀን ይምረጡ።");
         }
 
         const availableDays = await Availability.find({}).sort({ dayOfWeek: 1 });
@@ -26,6 +31,7 @@ const bookingWizard = new Scenes.WizardScene(
         const buttons = [];
         const now = DateTime.now().setZone(process.env.TIMEZONE);
 
+        // Generate next 14 days
         for (let i = 0; i < 14; i++) {
             const d = now.plus({ days: i });
             const config = availableDays.find(a => a.dayOfWeek === d.weekday);
@@ -51,7 +57,8 @@ const bookingWizard = new Scenes.WizardScene(
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
             }
-            return ctx.reply("⚠️ እባክዎ ከላይ ካሉት አማራጮች ቀን ይምረጡ።");
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return ctx.reply("⚠️ እባክዎ የቀረበውን ቀን ቁልፍ በመጫን ይምረጡ።");
         }
 
         if (!ctx.callbackQuery || !ctx.callbackQuery.data.startsWith('date_')) return;
@@ -60,20 +67,16 @@ const bookingWizard = new Scenes.WizardScene(
         const selectedDate = ctx.callbackQuery.data.replace('date_', '');
         ctx.wizard.state.date = selectedDate;
 
-        // --- 🛡️ ADDED: Duplicate Check ---
+        // 🛡️ CHECK 1: One booking per user per day
         const user = await User.findOne({ telegramId: ctx.from.id });
-        const alreadyBooked = await Booking.findOne({ 
-            userId: user._id, 
-            date: selectedDate 
-        });
+        const alreadyBooked = await Booking.findOne({ userId: user._id, date: selectedDate });
 
         if (alreadyBooked) {
             await ctx.editMessageText(
                 `⚠️ **ይቅርታ!**\n\nበ ${toEthioDisplay(selectedDate)} ቀድሞ የያዙት ቀጠሮ አለ። በቀን አንድ ቀጠሮ ብቻ ነው የሚፈቀደው።`,
                 Markup.inlineKeyboard([[Markup.button.callback("🏠 ተመለስ", "cancel_booking")]])
             );
-            // Move to next step but it will be handled by the cancel button or home button
-            return ctx.wizard.next(); 
+            return ctx.wizard.next(); // Move to wait for the button click
         }
 
         const dateObj = DateTime.fromISO(selectedDate);
@@ -84,10 +87,8 @@ const bookingWizard = new Scenes.WizardScene(
             return ctx.scene.leave();
         }
 
-        // --- 📅 STRICT CONSECUTIVE LOGIC: Find FIRST available ---
-        const existingBookings = await Booking.find({ date: selectedDate });
-        const bookedTimes = existingBookings.map(b => b.startTime);
-
+        // 🕒 CHECK 2: Find FIRST available slot (Strict Consecutive)
+        const bookedTimes = (await Booking.find({ date: selectedDate })).map(b => b.startTime);
         let firstAvailable = null;
         let curr = DateTime.fromISO(`${selectedDate}T${config.startTime}`, { zone: process.env.TIMEZONE });
         const end = DateTime.fromISO(`${selectedDate}T${config.endTime}`, { zone: process.env.TIMEZONE });
@@ -98,7 +99,6 @@ const bookingWizard = new Scenes.WizardScene(
                 curr = curr.plus({ minutes: config.slotDuration + config.gap });
                 continue;
             }
-
             const timeStr = curr.toFormat('HH:mm');
             if (!bookedTimes.includes(timeStr)) {
                 firstAvailable = timeStr;
@@ -127,11 +127,15 @@ const bookingWizard = new Scenes.WizardScene(
         return ctx.wizard.next();
     },
 
-    // --- Step 3: Final Confirmation ---
+    // --- Step 3: Handle Confirmation of First Slot ---
     async (ctx) => {
-        if (ctx.message && ctx.message.text === '🏠 ዋና ማውጫ') {
-            await ctx.scene.leave();
-            return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
+        if (ctx.message) {
+            if (ctx.message.text === '🏠 ዋና ማውጫ') {
+                await ctx.scene.leave();
+                return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
+            }
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return ctx.reply("⚠️ እባክዎ የቀረበውን ሰዓት ለመቀበል ✅ ወይም ለመሰረዝ ❌ ቁልፎቹን ይጠቀሙ።");
         }
 
         if (!ctx.callbackQuery) return;
@@ -139,13 +143,12 @@ const bookingWizard = new Scenes.WizardScene(
 
         if (action === 'cancel_booking') {
             try { await ctx.answerCbQuery(); } catch (e) {}
-            await ctx.editMessageText("❌ ቀጠሮው አልተያዘም።");
+            await ctx.editMessageText("❌ ቀጠሮው አልተያዘም። ወደ ዋና ማውጫ ተመልሰዋል።");
             return ctx.scene.leave();
         }
 
         if (action === 'confirm_slot') {
             try { await ctx.answerCbQuery(); } catch (e) {}
-            
             const user = await User.findOne({ telegramId: ctx.from.id });
             const { date, startTime } = ctx.wizard.state;
 
@@ -166,9 +169,13 @@ const bookingWizard = new Scenes.WizardScene(
 
     // --- Step 4: Final Database Save ---
     async (ctx) => {
-        if (ctx.message && ctx.message.text === '🏠 ዋና ማውጫ') {
-            await ctx.scene.leave();
-            return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
+        if (ctx.message) {
+            if (ctx.message.text === '🏠 ዋና ማውጫ') {
+                await ctx.scene.leave();
+                return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
+            }
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return ctx.reply("⚠️ እባክዎ '✅ አዎ፣ አረጋግጥ' የሚለውን በመጫን ቀጠሮዎን ያጠናቅቁ።");
         }
 
         if (!ctx.callbackQuery) return;
@@ -176,11 +183,10 @@ const bookingWizard = new Scenes.WizardScene(
 
         if (action === 'finalize_booking') {
             try { await ctx.answerCbQuery(); } catch (e) {}
-            
             const user = await User.findOne({ telegramId: ctx.from.id });
             const { date, startTime } = ctx.wizard.state;
             
-            // Safety Double Check (Race condition)
+            // Double check race condition
             const exists = await Booking.findOne({ date, startTime });
             if (exists) {
                 await ctx.editMessageText("⚠️ ይቅርታ! ይህ ሰዓት አሁን ተይዟል። እባክዎ እንደገና ይሞክሩ።");
@@ -206,11 +212,10 @@ const bookingWizard = new Scenes.WizardScene(
                 `እባክዎ በሰዓቱ ይገኙ።`
             );
             
+            // Notify Admin
             try {
-                 await ctx.telegram.sendMessage(
-                    process.env.ADMIN_ID, 
-                    `📢 **አዲስ ቀጠሮ**\n👤 ${user.religiousName}\n📅 ${toEthioDisplay(date)} - ${toEthioTime(startTime)}`
-                );
+                 await ctx.telegram.sendMessage(process.env.ADMIN_ID, 
+                    `📢 **አዲስ ቀጠሮ**\n👤 ${user.religiousName || user.fullName}\n📅 ${toEthioDisplay(date)} - ${toEthioTime(startTime)}`);
             } catch (err) {}
 
             return ctx.scene.leave();
@@ -223,7 +228,7 @@ const bookingWizard = new Scenes.WizardScene(
     }
 );
 
-// Global interrupt for this scene
+// Global interrupt for the scene
 bookingWizard.hears('🏠 ዋና ማውጫ', async (ctx) => {
     await ctx.scene.leave();
     return ctx.reply('🏠 ወደ ዋና ማውጫ ተመልሰዋል።', userMenu);

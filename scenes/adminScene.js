@@ -67,6 +67,7 @@ adminScene.action(/^viewday_(\d+)$/, async (ctx) => {
 
         // 4. Build the Report
         let report = `📋 **የ${amharicDays[dayNum - 1]} ቀጠሮዎች (${ethioDateDisplay})**\n`;
+        report += `👥 **ጠቅላላ ቀጠሮዎች፦ ${bookings.length}**\n`;
         report += `──────────────────\n`;
 
         bookings.forEach((b, index) => {
