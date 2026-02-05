@@ -1,6 +1,5 @@
 require('dotenv').config();
 const { Telegraf, Scenes, session, Markup } = require('telegraf');
-const { DateTime } = require('luxon');
 const connectDB = require('./database');
 const http = require('http');
 
@@ -20,7 +19,7 @@ const adminUpdateWizard = require('./scenes/adminUpdateScene');
 const adminBlockWizard = require('./scenes/adminBlockScene');
 const adminUnblockScene = require('./scenes/adminUnblockScene');
 
-// --- SAFETY: Normalize Admin ID once ---
+// --- SAFETY: Normalize Admin ID ---
 const ADMIN_ID = process.env.ADMIN_ID ? process.env.ADMIN_ID.trim() : "";
 
 const server = http.createServer((req, res) => {
@@ -43,13 +42,8 @@ const stage = new Scenes.Stage([
     adminUnblockScene
 ]);
 
-bot.use(session());
-bot.use(stage.middleware());
-
-/* =========================
-   🌍 GLOBAL NAVIGATION
-========================= */
-
+// Handle "Home" globally for the stage
+// This acts as a backup, though scenes should handle it themselves for best UX
 stage.hears('🏠 ዋና ማውጫ', async (ctx) => {
     await ctx.scene.leave();
     const isAdmin = ctx.from.id.toString() === ADMIN_ID;
@@ -58,6 +52,9 @@ stage.hears('🏠 ዋና ማውጫ', async (ctx) => {
         isAdmin ? adminMenu : userMenu
     );
 });
+
+bot.use(session());
+bot.use(stage.middleware());
 
 /* =========================
    HELPERS
@@ -111,7 +108,7 @@ bot.hears('📋 የያዝኳቸው ቀጠሮዎች', async (ctx) => {
         await ctx.reply(msg, { parse_mode: 'Markdown' });
     } catch (err) {
         console.error(err);
-        ctx.reply("❌ የቀጠሮ መረጃዎችን በማምጣት ላይ ስህተት ተከስቷል።");
+        ctx.reply("❌ መረጃ ማምጣት አልተቻለም።");
     }
 });
 
@@ -144,56 +141,45 @@ bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
 
 bot.action(/^confirm_unbook_(.+)$/, async (ctx) => {
     try {
-        // Stop the loading spinner immediately
         await ctx.answerCbQuery("በሂደት ላይ...");
-        
         const bookingId = ctx.match[1];
         const booking = await Booking.findByIdAndDelete(bookingId);
 
         if (booking) {
             await ctx.editMessageText(`✅ በ ${toEthioDisplay(booking.date)} በ ${toEthioTime(booking.startTime)} የነበረው ቀጠሮ ተሰርዟል።`);
             
-            // Notify Admin
             await ctx.telegram.sendMessage(
                 ADMIN_ID, 
-                `⚠️ **የቀጠሮ ስረዛ ማሳሰቢያ**\n\n👤 ስም፦ ${booking.userName}\n⛪️ የክርስትና ስም፦ ${booking.religiousName}\n📅 ቀን፦ ${toEthioDisplay(booking.date)}\n🕒 ሰዓት፦ ${toEthioTime(booking.startTime)}`
+                `⚠️ **ቀጠሮ ተሰርዟል**\n👤 ${booking.userName} (${booking.religiousName})\n📅 ${toEthioDisplay(booking.date)}`
             );
         } else {
-            await ctx.reply("⚠️ ቀጠሮው ቀድሞ ተሰርዟል ወይም አልተገኘም።");
+            await ctx.reply("⚠️ ቀጠሮው ቀድሞ ተሰርዟል።");
         }
     } catch (err) {
-        console.error("Cancel Error:", err);
-        // Do not crash the bot, just inform the user
+        console.error(err);
     }
 });
 
 /* =========================
    🛠 ADMIN ACTIONS
 ========================= */
+// Note: We use arrow functions that verify Admin ID manually for security
+const isAdmin = (ctx) => ctx.from.id.toString() === ADMIN_ID;
 
-bot.hears('📋 ሁሉንም ቀጠሮዎች እይ', (ctx) => {
-    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_SCENE');
-});
-
-bot.hears('⚙️ የጊዜ ሰሌዳ አስገባ/ቀይር', (ctx) => {
-    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_UPDATE_AVAILABILITY');
-});
-
-bot.hears('🚫 ሰዓት ዝጋ', (ctx) => {
-    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_BLOCK_TIME');
-});
-
-bot.hears('🔓 የተዘጉ ሰዓቶች', (ctx) => {
-    if (ctx.from.id.toString() === ADMIN_ID) return ctx.scene.enter('ADMIN_UNBLOCK_SCENE');
-});
+bot.hears('📋 ሁሉንም ቀጠሮዎች እይ', (ctx) => isAdmin(ctx) && ctx.scene.enter('ADMIN_SCENE'));
+bot.hears('⚙️ የጊዜ ሰሌዳ አስገባ/ቀይር', (ctx) => isAdmin(ctx) && ctx.scene.enter('ADMIN_UPDATE_AVAILABILITY'));
+bot.hears('🚫 ሰዓት ዝጋ', (ctx) => isAdmin(ctx) && ctx.scene.enter('ADMIN_BLOCK_TIME'));
+bot.hears('🔓 የተዘጉ ሰዓቶች', (ctx) => isAdmin(ctx) && ctx.scene.enter('ADMIN_UNBLOCK_SCENE'));
 
 /* =========================
-   🚨 GLOBAL ERROR HANDLER (The Ultimate Safety)
+   🚨 GLOBAL ERROR HANDLER
 ========================= */
 bot.catch((err, ctx) => {
-  console.error(`Ooops, encountered an error for ${ctx.updateType}`, err);
-  // Optional: Notify the user that something went wrong without crashing
-  ctx.reply("❌ ይቅርታ፣ ያልታሰበ ስህተት ተከስቷል። እባክዎ ጥቂት ቆይተው እንደገና ይሞክሩ።").catch(e => console.error(e));
+  console.error(`Error for ${ctx.updateType}`, err);
+  // Don't reply if the error is "message is not modified" (common Telegram quirk)
+  if (!err.message.includes('message is not modified')) {
+     ctx.reply("❌ ስህተት ተከስቷል። እባክዎ እንደገና ይሞክሩ።").catch(() => {});
+  }
 });
 
 const PORT = process.env.PORT || 8000;
@@ -202,7 +188,7 @@ server.listen(PORT, () => {
 });
 
 bot.launch()
-  .then(() => console.log('✅ Bot is online / 🤖 ቦቱ ስራ ጀምሯል'))
+  .then(() => console.log('✅ Bot is online'))
   .catch((err) => console.error('❌ Bot launch failed:', err));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
