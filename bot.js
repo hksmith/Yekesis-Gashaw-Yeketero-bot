@@ -194,12 +194,24 @@ bot.catch((err, ctx) => {
     }
 });
 
+// Reusable response functions
+const unbookingSelectionError = async (ctx) => {
+    try { await ctx.deleteMessage(); } catch (e) { /* ignore errors */ }
+    return ctx.reply("⚠️ እባክዎ ከተሰጡት ቀን ለመሰረዝ የሚፈልጉትን ቀጠሮ ይምረጡ።");
+};
+
+const generalError = async (ctx) => {
+    try { await ctx.deleteMessage(); } catch (e) { /* ignore errors */ }
+    return ctx.reply("⚠️ እባክዎ ከተሰጡት አማራጮች ይምረጡ። ያለ ምርጫ የተጻፈ ጽሑፍ ተቀባይነት የለውም።",
+        Markup.keyboard([['🏠 ዋና ማውጫ']]).resize());
+};
+
 // 🌐 Global text guard (catch-all for unhandled messages)
-bot.on('text', async (ctx) => {
+bot.hears(/.*/, async (ctx) => {
     // Ignore messages from inside scenes
     if (ctx.scene?.current) return;
     if (!ctx.message?.text) return;
-    
+
     // Check if there's a slash command
     if (ctx.message.text.startsWith('/')) return;
 
@@ -228,14 +240,11 @@ bot.on('text', async (ctx) => {
 
     // Check for specific active operations
     if (ctx.session?.activeOperation === 'unbooking_selection') {
-        try { await ctx.deleteMessage(); } catch (e) { /* ignore errors */ }
-        return ctx.reply("⚠️ እባክዎ ከተሰጡት ቀን ለመሰረዝ የሚፈልጉትን ቀጠሮ ይምረጡ።");
+        return unbookingSelectionError(ctx);
     }
 
     // General unhandled message case
-    try { await ctx.deleteMessage(); } catch (e) { /* ignore errors */ }
-    return ctx.reply("⚠️ እባክዎ ከተሰጡት አማራጮች ይምረጡ። ያለ ምርጫ የተጻፈ ጽሑፍ ተቀባይነት የለውም።",
-        Markup.keyboard([['🏠 ዋና ማውጫ']]).resize());
+    return generalError(ctx);
 });
 
 const PORT = process.env.PORT || 8000;
