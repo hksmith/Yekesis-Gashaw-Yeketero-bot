@@ -19,9 +19,14 @@ const bookingWizard = new Scenes.WizardScene(
     async (ctx) => {
         // If they send a text message
         if (ctx.message?.text && !ctx.callbackQuery) {
-            if (ctx.message.text === '📅 ቀጠሮ ለመያዝ') {  }
 
-            if (ESCAPE_ACTIONS.includes(ctx.message.text)) {
+            // ✅ ENTRY POINT: allow booking command to continue
+            if (ctx.message.text === '📅 ቀጠሮ ለመያዝ') {
+                // DO NOTHING and continue to date generation
+            }
+
+            // 🚪 Escape actions: leave booking
+            else if (ESCAPE_ACTIONS.includes(ctx.message.text)) {
                 await ctx.scene.leave();
                 return ctx.reply(
                     "🏠 ከቀጠሮ ሂደት ወጥተዋል።",
@@ -29,11 +34,13 @@ const bookingWizard = new Scenes.WizardScene(
                 );
             }
 
-            // Anything else is truly invalid
-            try { await ctx.deleteMessage(); } catch (e) { }
-            return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ቀን ይምረጡ።");
+            // ❌ Any other typed text is invalid
+            else {
+                try { await ctx.deleteMessage(); } catch (e) { }
+                return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ቀን ይምረጡ።");
+            }
         }
-
+        
         const availableDays = await Availability.find({}).sort({ dayOfWeek: 1 });
         if (availableDays.length === 0) {
             await ctx.reply("⚠️ ይቅርታ፣ በአሁኑ ሰዓት ክፍት የሆኑ ቀናት የሉም።");
