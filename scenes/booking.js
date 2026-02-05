@@ -12,7 +12,7 @@ const bookingWizard = new Scenes.WizardScene(
     // --- Step 1: Pick a Date ---
     async (ctx) => {
         // If they send a text message
-        if (ctx.message) {
+        if (ctx.message?.text && !ctx.callbackQuery) {
             if (ctx.message.text === '🏠 ዋና ማውጫ') {
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
@@ -52,7 +52,7 @@ const bookingWizard = new Scenes.WizardScene(
 
     // --- Step 2: DUPLICATE CHECK + STRICT CONSECUTIVE SLOT ---
     async (ctx) => {
-        if (ctx.message) {
+        if (ctx.message?.text && !ctx.callbackQuery) {
             if (ctx.message.text === '🏠 ዋና ማውጫ') {
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
@@ -129,7 +129,7 @@ const bookingWizard = new Scenes.WizardScene(
 
     // --- Step 3: Handle Confirmation of First Slot ---
     async (ctx) => {
-        if (ctx.message) {
+        if (ctx.message?.text && !ctx.callbackQuery) {
             if (ctx.message.text === '🏠 ዋና ማውጫ') {
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
@@ -169,7 +169,7 @@ const bookingWizard = new Scenes.WizardScene(
 
     // --- Step 4: Final Database Save ---
     async (ctx) => {
-        if (ctx.message) {
+        if (ctx.message?.text && !ctx.callbackQuery) {
             if (ctx.message.text === '🏠 ዋና ማውጫ') {
                 await ctx.scene.leave();
                 return ctx.reply("🏠 ወደ ዋና ማውጫ ተመልሰዋል።", userMenu);
