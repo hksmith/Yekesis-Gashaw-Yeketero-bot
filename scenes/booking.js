@@ -19,8 +19,8 @@ const bookingWizard = new Scenes.WizardScene(
     async (ctx) => {
         // If they send a text message
         if (ctx.message?.text && !ctx.callbackQuery) {
-            if (ctx.message.text === '📅 ቀጠሮ ለመያዝ') { return; }
-            
+            if (ctx.message.text === '📅 ቀጠሮ ለመያዝ') {  }
+
             if (ESCAPE_ACTIONS.includes(ctx.message.text)) {
                 await ctx.scene.leave();
                 return ctx.reply(
