@@ -50,6 +50,12 @@ const stage = new Scenes.Stage([
 // This acts as a backup, though scenes should handle it themselves for best UX
 stage.hears('🏠 ዋና ማውጫ', async (ctx) => {
     await ctx.scene.leave();
+
+    // Reset/clear the session
+    if (ctx.session) {
+        ctx.session = {};
+    }
+
     const isAdmin = ctx.from.id.toString() === ADMIN_ID;
     return ctx.reply(
         "🏠 ወደ ዋና ማውጫ ተመልሰዋል።",
