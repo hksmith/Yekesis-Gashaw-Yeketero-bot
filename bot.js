@@ -24,8 +24,8 @@ const adminUnblockScene = require('./scenes/adminUnblockScene');
 const ADMIN_ID = process.env.ADMIN_ID ? process.env.ADMIN_ID.trim() : "";
 
 const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Bot is Active');
+    res.writeHead(200);
+    res.end('Bot is Active');
 });
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -66,7 +66,7 @@ bot.use(stage.middleware());
 const sendMainMenu = async (ctx) => {
     const isAdmin = ctx.from.id.toString() === ADMIN_ID;
     const user = await User.findOne({ telegramId: ctx.from.id });
-    
+
     let welcomeMsg = isAdmin ? "🛠 **የአስተዳዳሪ ሰሌዳ**" : `🙏 እንኳን ደህና መጡ ${user?.religiousName || ''}`;
     return ctx.reply(welcomeMsg, isAdmin ? adminMenu : userMenu);
 };
@@ -94,10 +94,10 @@ bot.hears('📋 የያዝኳቸው ቀጠሮዎች', async (ctx) => {
         if (!user) return ctx.reply("እባክዎ መጀመሪያ /start በማለት ይመዝገቡ።");
 
         const now = new Date();
-        const bookings = await Booking.find({ 
-            userId: user._id, 
+        const bookings = await Booking.find({
+            userId: user._id,
             userName: { $ne: "ADMIN_BLOCK" },
-            timestamp: { $gte: now } 
+            timestamp: { $gte: now }
         }).sort({ timestamp: 1 });
 
         if (bookings.length === 0) {
@@ -122,10 +122,10 @@ bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
         if (!user) return ctx.reply("እባክዎ መጀመሪያ /start በማለት ይመዝገቡ።");
 
         const now = new Date();
-        const bookings = await Booking.find({ 
-            userId: user._id, 
+        const bookings = await Booking.find({
+            userId: user._id,
             userName: { $ne: "ADMIN_BLOCK" },
-            timestamp: { $gte: now } 
+            timestamp: { $gte: now }
         }).sort({ timestamp: 1 });
 
         if (bookings.length === 0) {
@@ -133,8 +133,14 @@ bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
         }
 
         const buttons = bookings.map(b => {
-            return [Markup.button.callback(`🗑 ሰርዝ፦ ${toEthioDisplay(b.date)} (${toEthioTime(b.startTime)})`, `confirm_unbook_${b._id}`)];
+            return [Markup.button.callback(
+                `🗑 ሰርዝ፦ ${toEthioDisplay(b.date)} (${toEthioTime(b.startTime)})`,
+                `confirm_unbook_${b._id}`)];
         });
+
+        // Store this specific conversation state to identify the context
+        ctx.session = ctx.session || {};
+        ctx.session.activeOperation = 'unbooking_selection';
 
         await ctx.reply("ለመሰረዝ የሚፈልጉትን ቀጠሮ ይምረጡ፦", Markup.inlineKeyboard(buttons));
     } catch (err) {
@@ -150,10 +156,12 @@ bot.action(/^confirm_unbook_(.+)$/, async (ctx) => {
         const booking = await Booking.findByIdAndDelete(bookingId);
 
         if (booking) {
+            if (ctx.session) ctx.session.activeOperation = null;
+
             await ctx.editMessageText(`✅ በ ${toEthioDisplay(booking.date)} በ ${toEthioTime(booking.startTime)} የነበረው ቀጠሮ ተሰርዟል።`);
-            
+
             await ctx.telegram.sendMessage(
-                ADMIN_ID, 
+                ADMIN_ID,
                 `⚠️ **ቀጠሮ ተሰርዟል**\n👤 ${booking.userName} (${booking.religiousName})\n📅 ${toEthioDisplay(booking.date)}`
             );
         } else {
@@ -179,11 +187,11 @@ bot.hears('🔓 የተዘጉ ሰዓቶች', (ctx) => isAdmin(ctx) && ctx.scene.e
    🚨 GLOBAL ERROR HANDLER
 ========================= */
 bot.catch((err, ctx) => {
-  console.error(`Error for ${ctx.updateType}`, err);
-  // Don't reply if the error is "message is not modified" (common Telegram quirk)
-  if (!err.message.includes('message is not modified')) {
-     ctx.reply("❌ ስህተት ተከስቷል። እባክዎ እንደገና ይሞክሩ።").catch(() => {});
-  }
+    console.error(`Error for ${ctx.updateType}`, err);
+    // Don't reply if the error is "message is not modified" (common Telegram quirk)
+    if (!err.message.includes('message is not modified')) {
+        ctx.reply("❌ ስህተት ተከስቷል። እባክዎ እንደገና ይሞክሩ።").catch(() => { });
+    }
 });
 
 // 🌐 Global text guard (catch-all for unhandled messages)
@@ -218,17 +226,22 @@ bot.on('text', async (ctx) => {
     // Otherwise, delete and warn
     try { await ctx.deleteMessage(); } catch (e) { }
 
+    if (ctx.session?.activeOperation === 'unbooking_selection') {
+        return ctx.reply("⚠️ እባክዎ ከተሰጡት አማራጮች ይምረጡ። ያለ ምርጫ የተጻፈ ጽሑፍ ተቀባይነት የለውም።",
+            Markup.keyboard([['🏠 ዋና ማውጫ']]).resize());
+    }
+
     return ctx.reply("⚠️ እባክዎ ከታች ካሉት አማራጮች ይምረጡ።");
 });
 
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
-  console.log(`Keep-alive server is listening on port ${PORT}`);
+    console.log(`Keep-alive server is listening on port ${PORT}`);
 });
 
 bot.launch()
-  .then(() => console.log('✅ Bot is online'))
-  .catch((err) => console.error('❌ Bot launch failed:', err));
+    .then(() => console.log('✅ Bot is online'))
+    .catch((err) => console.error('❌ Bot launch failed:', err));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
