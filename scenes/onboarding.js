@@ -9,7 +9,9 @@ const onboardingWizard = new Scenes.WizardScene(
 
     // --- Step 1: Video Guidance (Safe Mode) ---
     async (ctx) => {
-        const videoUrl = process.env.GUIDANCE_VIDEO_URL;
+        const videoUrl = process.env.GUIDANCE_VIDEO_URL
+            ? path.resolve(__dirname, '..', process.env.GUIDANCE_VIDEO_URL)
+            : null;
 
         const welcomeCaption = "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። አገልግሎቱን ለማግኘት መጀመሪያ መመዝገብ ይኖርብዎታል።\n\nቦቱን እንዴት እንደሚጠቀሙ ለማየት ቪዲዮውን ይመልከቱ (ወይም ዝም ብለው ምዝገባ ይጀምሩ)።";
         const startKeyboard = Markup.keyboard([[START_TEXT]])
