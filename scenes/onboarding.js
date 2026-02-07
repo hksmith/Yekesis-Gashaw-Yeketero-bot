@@ -10,18 +10,25 @@ const onboardingWizard = new Scenes.WizardScene(
         const videoUrl = process.env.GUIDANCE_VIDEO_URL;
 
         const welcomeCaption = "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። አገልግሎቱን ለማግኘት መጀመሪያ መመዝገብ ይኖርብዎታል።\n\nቦቱን እንዴት እንደሚጠቀሙ ለማየት ቪዲዮውን ይመልከቱ (ወይም ዝም ብለው ምዝገባ ይጀምሩ)።";
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback("📝 ምዝገባ ይጀምሩ", "start_reg")]
-        ]);
-
+        const startKeyboard = Markup.keyboard([
+            ['📝 ምዝገባ ይጀምሩ']
+        ])
+            .resize()
+            .oneTime();
+            
         try {
             // Check if URL exists. If not, throw error manually to go to 'catch' block
             if (!videoUrl) throw new Error("No Video URL provided");
 
             await ctx.replyWithVideo(videoUrl, {
-                caption: welcomeCaption,
-                ...keyboard
+                caption: welcomeCaption
             });
+
+            await ctx.reply(
+                "👇 እባክዎ ምዝገባ ለመጀመር ከታች ያለውን ቁልፍ ይጫኑ።",
+                startKeyboard
+            );
+            
         } catch (error) {
             // ⚠️ IF VIDEO FAILS, FALLBACK TO TEXT
             // This prevents the "❌ ስህተት ተከስቷል" error
@@ -38,7 +45,7 @@ const onboardingWizard = new Scenes.WizardScene(
 
     // --- Step 2: Handle Start Button ---
     async (ctx) => {
-        if (ctx.message) {
+        if (ctx.message?.text !== '📝 ምዝገባ ይጀምሩ') {
             try { await ctx.deleteMessage(); } catch (e) { }
             return ctx.reply("⚠️ እባክዎ ምዝገባ ለመጀመር ከላይ ያለውን ቁልፍ ይጫኑ።");
         }
