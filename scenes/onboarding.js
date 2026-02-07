@@ -28,7 +28,7 @@ const onboardingWizard = new Scenes.WizardScene(
                 "👇 እባክዎ ምዝገባ ለመጀመር ከታች ያለውን ቁልፍ ይጫኑ።",
                 startKeyboard
             );
-            
+
         } catch (error) {
             // ⚠️ IF VIDEO FAILS, FALLBACK TO TEXT
             // This prevents the "❌ ስህተት ተከስቷል" error
@@ -36,7 +36,7 @@ const onboardingWizard = new Scenes.WizardScene(
 
             await ctx.reply(
                 "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። አገልግሎቱን ለማግኘት መጀመሪያ መመዝገብ ይኖርብዎታል።",
-                keyboard
+                startKeyboard
             );
         }
 
