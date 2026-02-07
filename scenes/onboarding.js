@@ -5,28 +5,46 @@ const { userMenu } = require('../utils/keyboards');
 const onboardingWizard = new Scenes.WizardScene(
     'ONBOARDING_SCENE',
 
-    // --- Step 1: Video Guidance ---
+    // --- Step 1: Video Guidance (Safe Mode) ---
     async (ctx) => {
-        const videoUrl = process.env.GUIDANCE_VIDEO_URL; // Add your video link/file_id to .env
-        
-        await ctx.replyWithVideo(videoUrl, {
-            caption: "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። ቦቱን እንዴት እንደሚጠቀሙ ለማየት ከላይ ያለውን ቪዲዮ ይመልከቱ።\n\nለመቀጠል **ምዝገባ ይጀምሩ** የሚለውን ይጫኑ።",
-            ...Markup.inlineKeyboard([
-                [Markup.button.callback("📝 ምዝገባ ይጀምሩ", "start_reg")]
-            ])
-        });
+        const videoUrl = process.env.GUIDANCE_VIDEO_URL;
+
+        const welcomeCaption = "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። አገልግሎቱን ለማግኘት መጀመሪያ መመዝገብ ይኖርብዎታል።\n\nቦቱን እንዴት እንደሚጠቀሙ ለማየት ቪዲዮውን ይመልከቱ (ወይም ዝም ብለው ምዝገባ ይጀምሩ)።";
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback("📝 ምዝገባ ይጀምሩ", "start_reg")]
+        ]);
+
+        try {
+            // Check if URL exists. If not, throw error manually to go to 'catch' block
+            if (!videoUrl) throw new Error("No Video URL provided");
+
+            await ctx.replyWithVideo(videoUrl, {
+                caption: welcomeCaption,
+                ...keyboard
+            });
+        } catch (error) {
+            // ⚠️ IF VIDEO FAILS, FALLBACK TO TEXT
+            // This prevents the "❌ ስህተት ተከስቷል" error
+            console.log("Video failed to load (sending text instead):", error.message);
+
+            await ctx.reply(
+                "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። አገልግሎቱን ለማግኘት መጀመሪያ መመዝገብ ይኖርብዎታል።",
+                keyboard
+            );
+        }
+
         return ctx.wizard.next();
     },
 
     // --- Step 2: Handle Start Button ---
     async (ctx) => {
         if (ctx.message) {
-            try { await ctx.deleteMessage(); } catch (e) {}
+            try { await ctx.deleteMessage(); } catch (e) { }
             return ctx.reply("⚠️ እባክዎ ምዝገባ ለመጀመር ከላይ ያለውን ቁልፍ ይጫኑ።");
         }
 
         if (ctx.callbackQuery?.data === 'start_reg') {
-            try { await ctx.answerCbQuery(); } catch (e) {}
+            try { await ctx.answerCbQuery(); } catch (e) { }
             await ctx.reply("እሺ! መጀመሪያ **የክርስትና ስምዎን** ያስገቡ፦");
             return ctx.wizard.next();
         }
@@ -52,7 +70,7 @@ const onboardingWizard = new Scenes.WizardScene(
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስልክ ቁጥርዎን ያስገቡ።");
         const phoneNumber = ctx.message.text;
-        
+
         try {
             const user = new User({
                 telegramId: ctx.from.id,
@@ -64,9 +82,9 @@ const onboardingWizard = new Scenes.WizardScene(
 
             await user.save();
             ctx.session.isRegistered = true;
-            
+
             await ctx.reply(
-                `ቃልህ/ሽ ይባረክ ${ctx.wizard.state.religiousName}። ምዝገባዎ ተጠናቅቋል።\n\nከታች ያለውን ማውጫ በመጠቀም ቀጠሮ መያዝ ይችላሉ።`, 
+                `ቃልህ/ሽ ይባረክ ${ctx.wizard.state.religiousName}። ምዝገባዎ ተጠናቅቋል።\n\nከታች ያለውን ማውጫ በመጠቀም ቀጠሮ መያዝ ይችላሉ።`,
                 userMenu
             );
             return ctx.scene.leave();

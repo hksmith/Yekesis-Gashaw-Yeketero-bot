@@ -65,6 +65,8 @@ stage.hears('🏠 ዋና ማውጫ', async (ctx) => {
 
 bot.use(session());
 
+bot.use(stage.middleware());
+
 // --- 🛡️ The Global Registration Gatekeeper ---
 bot.use(async (ctx, next) => {
     // 1. Allow the Admin to pass through everything
@@ -101,8 +103,6 @@ bot.use(async (ctx, next) => {
 
     return ctx.scene.enter('ONBOARDING_SCENE');
 });
-
-bot.use(stage.middleware());
 
 /* =========================
    HELPERS
