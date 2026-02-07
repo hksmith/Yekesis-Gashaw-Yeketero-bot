@@ -50,7 +50,7 @@ const onboardingWizard = new Scenes.WizardScene(
             return ctx.reply("⚠️ እባክዎ ምዝገባ ለመጀመር ከላይ ያለውን ቁልፍ ይጫኑ።");
         }
 
-        if (ctx.callbackQuery?.data === 'start_reg') {
+        if (ctx.callbackQuery?.data === '📝 ምዝገባ ይጀምሩ') {
             try { await ctx.answerCbQuery(); } catch (e) { }
             await ctx.reply("እሺ! መጀመሪያ **የክርስትና ስምዎን** ያስገቡ፦");
             return ctx.wizard.next();
