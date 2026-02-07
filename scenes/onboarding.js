@@ -2,6 +2,8 @@ const { Scenes, Markup } = require('telegraf');
 const User = require('../models/User');
 const { userMenu } = require('../utils/keyboards');
 
+const START_TEXT = '📝 ምዝገባ ይጀምሩ';
+
 const onboardingWizard = new Scenes.WizardScene(
     'ONBOARDING_SCENE',
 
@@ -10,12 +12,10 @@ const onboardingWizard = new Scenes.WizardScene(
         const videoUrl = process.env.GUIDANCE_VIDEO_URL;
 
         const welcomeCaption = "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። አገልግሎቱን ለማግኘት መጀመሪያ መመዝገብ ይኖርብዎታል።\n\nቦቱን እንዴት እንደሚጠቀሙ ለማየት ቪዲዮውን ይመልከቱ (ወይም ዝም ብለው ምዝገባ ይጀምሩ)።";
-        const startKeyboard = Markup.keyboard([
-            ['📝 ምዝገባ ይጀምሩ']
-        ])
+        const startKeyboard = Markup.keyboard([[START_TEXT]])
             .resize()
             .oneTime();
-            
+
         try {
             // Check if URL exists. If not, throw error manually to go to 'catch' block
             if (!videoUrl) throw new Error("No Video URL provided");
@@ -45,18 +45,16 @@ const onboardingWizard = new Scenes.WizardScene(
 
     // --- Step 2: Handle Start Button ---
     async (ctx) => {
-        if (ctx.message?.text !== '📝 ምዝገባ ይጀምሩ') {
+        if (!ctx.message || !ctx.message.text) return;
+
+        if (ctx.message.text !== START_TEXT) {
             try { await ctx.deleteMessage(); } catch (e) { }
-            return ctx.reply("⚠️ እባክዎ ምዝገባ ለመጀመር ከላይ ያለውን ቁልፍ ይጫኑ።");
+            return ctx.reply("⚠️ እባክዎ ምዝገባ ለመጀመር ከታች ያለውን ቁልፍ ይጫኑ።");
         }
 
-        if (ctx.callbackQuery?.data === '📝 ምዝገባ ይጀምሩ') {
-            try { await ctx.answerCbQuery(); } catch (e) { }
-            await ctx.reply("እሺ! መጀመሪያ **የክርስትና ስምዎን** ያስገቡ፦");
-            return ctx.wizard.next();
-        }
+        await ctx.reply("እሺ! መጀመሪያ **የክርስትና ስምዎን** ያስገቡ፦");
+        return ctx.wizard.next();
     },
-
     // --- Step 3: Religious Name ---
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስምዎን በጽሁፍ ያስገቡ።");
