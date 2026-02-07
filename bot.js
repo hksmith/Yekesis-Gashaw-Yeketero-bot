@@ -66,6 +66,43 @@ stage.hears('🏠 ዋና ማውጫ', async (ctx) => {
 bot.use(session());
 bot.use(stage.middleware());
 
+// --- 🛡️ The Global Registration Gatekeeper ---
+bot.use(async (ctx, next) => {
+    // 1. Allow the Admin to pass through everything
+    if (ctx.from && ctx.from.id.toString() === ADMIN_ID) {
+        return next();
+    }
+
+    // 2. Allow the bot to process the onboarding scene itself
+    if (ctx.scene && ctx.scene.current && ctx.scene.current.id === 'ONBOARDING_SCENE') {
+        return next();
+    }
+
+    // 3. Allow the /start command
+    if (ctx.message && ctx.message.text === '/start') {
+        return next();
+    }
+
+    // 4. Check session cache
+    if (ctx.session && ctx.session.isRegistered) {
+        return next();
+    }
+
+    // 5. Check Database
+    const user = await User.findOne({ telegramId: ctx.from.id });
+    if (user && user.isRegistered) {
+        ctx.session.isRegistered = true;
+        return next();
+    }
+
+    // 6. If not registered, cleanup and force onboarding
+    if (ctx.message) {
+        try { await ctx.deleteMessage(); } catch (e) {}
+    }
+
+    return ctx.scene.enter('ONBOARDING_SCENE');
+});
+
 /* =========================
    HELPERS
 ========================= */

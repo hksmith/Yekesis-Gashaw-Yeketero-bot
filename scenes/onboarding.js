@@ -4,26 +4,51 @@ const { userMenu } = require('../utils/keyboards');
 
 const onboardingWizard = new Scenes.WizardScene(
     'ONBOARDING_SCENE',
-    // Step 1: Religious Name (የክርስትና ስም)
+
+    // --- Step 1: Video Guidance ---
     async (ctx) => {
-        await ctx.reply("በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። አገልግሎቱን ለማግኘት እባክዎ መጀመሪያ ምዝገባ ያካሂዱ።\n\n**የክርስትና ስምዎን** ያስገቡ፦", { parse_mode: 'Markdown' });
+        const videoUrl = process.env.GUIDANCE_VIDEO_URL; // Add your video link/file_id to .env
+        
+        await ctx.replyWithVideo(videoUrl, {
+            caption: "በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን።\n\nእንኳን በደህና መጡ። ቦቱን እንዴት እንደሚጠቀሙ ለማየት ከላይ ያለውን ቪዲዮ ይመልከቱ።\n\nለመቀጠል **ምዝገባ ይጀምሩ** የሚለውን ይጫኑ።",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("📝 ምዝገባ ይጀምሩ", "start_reg")]
+            ])
+        });
         return ctx.wizard.next();
     },
-    // Step 2: Formal Name (ሙሉ ስም)
+
+    // --- Step 2: Handle Start Button ---
+    async (ctx) => {
+        if (ctx.message) {
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return ctx.reply("⚠️ እባክዎ ምዝገባ ለመጀመር ከላይ ያለውን ቁልፍ ይጫኑ።");
+        }
+
+        if (ctx.callbackQuery?.data === 'start_reg') {
+            try { await ctx.answerCbQuery(); } catch (e) {}
+            await ctx.reply("እሺ! መጀመሪያ **የክርስትና ስምዎን** ያስገቡ፦");
+            return ctx.wizard.next();
+        }
+    },
+
+    // --- Step 3: Religious Name ---
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስምዎን በጽሁፍ ያስገቡ።");
         ctx.wizard.state.religiousName = ctx.message.text;
-        await ctx.reply(`ጥሩ ${ctx.wizard.state.religiousName}፣ አሁን ደግሞ **ሙሉ ስምዎን** ያስገቡ፦`, { parse_mode: 'Markdown' });
+        await ctx.reply(`ጥሩ ${ctx.wizard.state.religiousName}፣ አሁን ደግሞ **ሙሉ ስምዎን** ያስገቡ፦`);
         return ctx.wizard.next();
     },
-    // Step 3: Phone Number (ስልክ ቁጥር)
+
+    // --- Step 4: Formal Name ---
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስምዎን በጽሁፍ ያስገቡ።");
         ctx.wizard.state.formalName = ctx.message.text;
-        await ctx.reply("በመጨረሻም **ስልክ ቁጥርዎን** ያስገቡ፦", { parse_mode: 'Markdown' });
+        await ctx.reply("በመጨረሻም **ስልክ ቁጥርዎን** ያስገቡ (ለምሳሌ፦ 0911...)፦");
         return ctx.wizard.next();
     },
-    // Step 4: Save & Welcome Message
+
+    // --- Step 5: Save & Welcome ---
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስልክ ቁጥርዎን ያስገቡ።");
         const phoneNumber = ctx.message.text;
@@ -41,14 +66,14 @@ const onboardingWizard = new Scenes.WizardScene(
             ctx.session.isRegistered = true;
             
             await ctx.reply(
-                `ቃልህ/ሽ ይባረክ ${ctx.wizard.state.religiousName}። ምዝገባዎ ተጠናቅቋል።\n\nከታች ያለውን ማውጫ በመጠቀም ቀጠሮ መያዝ ይችላሉ።\n\nእግዚአብሔር ከሁላችን ጋር ይሁን።`, 
+                `ቃልህ/ሽ ይባረክ ${ctx.wizard.state.religiousName}። ምዝገባዎ ተጠናቅቋል።\n\nከታች ያለውን ማውጫ በመጠቀም ቀጠሮ መያዝ ይችላሉ።`, 
                 userMenu
             );
             return ctx.scene.leave();
         } catch (error) {
             console.error(error);
-            await ctx.reply("ይቅርታ፣ ምዝገባው አልተሳካም። እባክዎ እንደገና ይሞክሩ።");
-            return ctx.scene.reenter();
+            await ctx.reply("ይቅርታ፣ ምዝገባው አልተሳካም። እባክዎ /start ብለው እንደገና ይሞክሩ።");
+            return ctx.scene.leave();
         }
     }
 );
