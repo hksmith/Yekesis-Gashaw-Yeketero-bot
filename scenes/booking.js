@@ -56,7 +56,11 @@ const bookingWizard = new Scenes.WizardScene(
             const config = availableDays.find(a => a.dayOfWeek === d.weekday);
 
             if (config) {
-                buttons.push([Markup.button.callback(toEthioDisplay(d.toISODate()), `date_${d.toISODate()}`)]);
+                let dayLabel = "";
+                if (d.weekday === 1) dayLabel = " (👤 የምክር ቀን)";
+                else if (d.weekday === 3) dayLabel = " (🙏 የንስሐ ቀን)";
+
+                buttons.push([Markup.button.callback(toEthioDisplay(d.toISODate()) + dayLabel, `date_${d.toISODate()}`)]);
             }
         }
 
