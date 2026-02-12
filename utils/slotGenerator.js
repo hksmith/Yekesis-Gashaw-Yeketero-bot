@@ -2,7 +2,7 @@ const { DateTime, Interval } = require('luxon');
 const { toEthioTime } = require('./ethioConverter');
 
 function generateSlots(settings, dateStr, existingBookings, timezone) {
-    const { startTime, endTime, slotDuration, gap } = settings;
+    const { startTime, endTime, slotDuration, gap, breaks } = settings;
     
     let current = DateTime.fromFormat(`${dateStr} ${startTime}`, "yyyy-MM-dd HH:mm", { zone: timezone });
     const dayEnd = DateTime.fromFormat(`${dateStr} ${endTime}`, "yyyy-MM-dd HH:mm", { zone: timezone });
@@ -13,6 +13,15 @@ function generateSlots(settings, dateStr, existingBookings, timezone) {
         const slotEnd = current.plus({ minutes: slotDuration });
         const slotInterval = Interval.fromDateTimes(current, slotEnd);
         
+        // 1. Check if the slot falls during a BREAK (e.g., Lunch)
+        const isDuringBreak = breaks && breaks.some(b => {
+            const breakStart = DateTime.fromFormat(`${dateStr} ${b.start}`, "yyyy-MM-dd HH:mm", { zone: timezone });
+            const breakEnd = DateTime.fromFormat(`${dateStr} ${b.end}`, "yyyy-MM-dd HH:mm", { zone: timezone });
+            const breakInterval = Interval.fromDateTimes(breakStart, breakEnd);
+            return slotInterval.overlaps(breakInterval);
+        });
+
+        // 2. Check if the slot is OCCUPIED by a booking or ADMIN_BLOCK
         const isOccupied = existingBookings.some(booking => {
             if (booking.userName === "ADMIN_BLOCK") {
                 const blockStart = DateTime.fromFormat(`${dateStr} ${booking.startTime}`, "yyyy-MM-dd HH:mm", { zone: timezone });
@@ -24,11 +33,12 @@ function generateSlots(settings, dateStr, existingBookings, timezone) {
             }
         });
 
-        if (!isOccupied) {
+        // Only push if it's NOT a break AND NOT occupied
+        if (!isDuringBreak && !isOccupied) {
             const gregValue = current.toFormat("HH:mm");
             slots.push({
-                display: toEthioTime(gregValue), // User sees "2:30 ከሰዓት"
-                value: gregValue                // DB stores "14:30"
+                display: toEthioTime(gregValue), 
+                value: gregValue                
             });
         }
 
