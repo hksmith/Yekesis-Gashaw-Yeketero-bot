@@ -252,13 +252,14 @@ const bookingWizard = new Scenes.WizardScene(
                 `✅ **ቀጠሮዎ ተረጋግጧል!**\n\n` +
                 `📅 ቀን፦ ${toEthioDisplay(date)}\n` +
                 `🕒 ሰዓት፦ ${toEthioTime(startTime)}\n\n` +
+                `📌 ዓይነት፦ ${bookingType}\n\n` +
                 `ሰዓት አክብረው እንደሚገኙ አንጠራጠርም።\nሰዓት ማክበር የጥሩ ክርስትያን መገለጫ ነው።\nእግዚአብሔር ይርዳን።`
             );
 
             // Notify Admin
             try {
                 await ctx.telegram.sendMessage(process.env.ADMIN_ID,
-                    `📢 **አዲስ ቀጠሮ**\n👤 ${user.religiousName || user.fullName}\n📅 ${toEthioDisplay(date)} - ${toEthioTime(startTime)}`);
+                    `📢 **አዲስ ቀጠሮ**\n👤 ${user.religiousName || user.fullName}\n🏷 ${bookingType}\n📅 ${toEthioDisplay(date)} - ${toEthioTime(startTime)}`);
             } catch (err) { }
 
             return ctx.scene.leave();
