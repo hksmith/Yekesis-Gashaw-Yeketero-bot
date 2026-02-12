@@ -1,5 +1,5 @@
 const { Scenes, Markup } = require('telegraf');
-const { DateTime } = require('luxon');
+const { DateTime, Interval } = require('luxon');
 const Booking = require('../models/Booking');
 const Availability = require('../models/Availability');
 const User = require('../models/User');
