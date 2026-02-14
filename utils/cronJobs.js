@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const { DateTime } = require('luxon');
 const Booking = require('../models/Booking');
-const User = require('../models/User'); // We need this to get their Telegram ID
+const User = require('../models/User'); 
 const { toEthioDisplay, toEthioTime } = require('./ethioConverter');
 
 const setupCronJobs = (bot) => {
@@ -35,17 +35,13 @@ const setupCronJobs = (bot) => {
     cron.schedule('0 20 * * *', async () => {
         try {
             const tomorrow = DateTime.now().setZone(process.env.TIMEZONE).plus({ days: 1 }).toISODate();
-            
-            // Find all bookings for tomorrow and "populate" the user info to get the telegramId
             const bookings = await Booking.find({ date: tomorrow }).populate('userId');
 
             if (bookings.length === 0) return;
 
             for (const booking of bookings) {
                 try {
-                    // We get the telegramId from the populated User model
                     const userTelegramId = booking.userId.telegramId;
-
                     const reminderText = 
                         `🔔 **የቀጠሮ ማስታወሻ**\n\n` +
                         `ሰላም ${booking.religiousName || booking.userName}፣\n` +
@@ -53,16 +49,69 @@ const setupCronJobs = (bot) => {
                         `እባክዎ በሰዓቱ ይገኙ። መልካም ምሽት!`;
 
                     await bot.telegram.sendMessage(userTelegramId, reminderText);
-                    
                 } catch (sendError) {
-                    // If a user blocked the bot, it won't crash the whole loop
                     console.error(`Could not send reminder to user ${booking.userName}:`, sendError.message);
                 }
             }
-            console.log(`✅ Sent ${bookings.length} reminders to users for tomorrow.`);
-
         } catch (err) {
             console.error('User Reminder Cron Error:', err);
+        }
+    }, { scheduled: true, timezone: process.env.TIMEZONE });
+
+    // --- JOB 3: Weekly Summary to ADMIN (Sunday 8:00 PM / ምሽት 2 ሰዓት) ---
+    cron.schedule('0 20 * * 0', async () => {
+        try {
+            const adminId = process.env.ADMIN_ID;
+            const sevenDaysAgo = DateTime.now().setZone(process.env.TIMEZONE).minus({ days: 7 }).toJSDate();
+
+            // Fetch all bookings from the last 7 days
+            const weeklyBookings = await Booking.find({
+                timestamp: { $gte: sevenDaysAgo }
+            }).populate('userId');
+
+            if (weeklyBookings.length === 0) {
+                return await bot.telegram.sendMessage(adminId, "📊 **የሳምንቱ ማጠቃለያ**፦ በዚህ ሳምንት ምንም ቀጠሮ አልነበረም።");
+            }
+
+            const stats = {
+                total: weeklyBookings.length,
+                groups: { 'ሉቃስ': 0, 'ማርቆስ': 0, 'ዮሐንስ': 0, 'ማትያስ': 0 },
+                types: { 'ምክር': 0, 'ንስሐ': 0, 'መደበኛ': 0 }
+            };
+
+            weeklyBookings.forEach(b => {
+                // Count by Group (from populated User data)
+                if (b.userId && b.userId.group) {
+                    stats.groups[b.userId.group] = (stats.groups[b.userId.group] || 0) + 1;
+                }
+
+                // Count by Type (based on day of week)
+                const day = DateTime.fromJSDate(b.timestamp).weekday;
+                if (day === 1) stats.types['ምክር']++;
+                else if (day === 3) stats.types['ንስሐ']++;
+                else stats.types['መደበኛ']++;
+            });
+
+            let report = `📊 **የሳምንቱ የሥራ ማጠቃለያ**\n`;
+            report += `(ካለፈው እሁድ - ዛሬ)\n`;
+            report += `_______________________\n\n`;
+            report += `✅ **ጠቅላላ ቀጠሮዎች፦** ${stats.total}\n\n`;
+            
+            report += `📍 **በክፍል (Group)፦**\n`;
+            for (const [group, count] of Object.entries(stats.groups)) {
+                report += ` • ${group}፦ ${count}\n`;
+            }
+
+            report += `\n✨ **በአገልግሎት ዓይነት፦**\n`;
+            report += ` • የምክር አገልግሎት፦ ${stats.types['ምክር']}\n`;
+            report += ` • የንስሐ ትምህርት፦ ${stats.types['ንስሐ']}\n`;
+            report += ` • ሌሎች፦ ${stats.types['መደበኛ']}\n`;
+            report += `_______________________`;
+
+            await bot.telegram.sendMessage(adminId, report);
+
+        } catch (err) {
+            console.error('Weekly Summary Cron Error:', err);
         }
     }, { scheduled: true, timezone: process.env.TIMEZONE });
 };
