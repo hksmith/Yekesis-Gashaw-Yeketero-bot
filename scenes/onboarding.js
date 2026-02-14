@@ -3,6 +3,8 @@ const User = require('../models/User');
 const { userMenu } = require('../utils/keyboards');
 
 const START_TEXT = '📝 ምዝገባ ይጀምሩ';
+// Defined the groups as a constant for easy maintenance
+const GROUPS = ['ሉቃስ', 'ማርቆስ', 'ዮሐንስ', 'ማትያስ'];
 
 const onboardingWizard = new Scenes.WizardScene(
     'ONBOARDING_SCENE',
@@ -17,7 +19,6 @@ const onboardingWizard = new Scenes.WizardScene(
             .oneTime();
 
         try {
-            // Check if URL exists. If not, throw error manually to go to 'catch' block
             if (!videoUrl) throw new Error("No Video URL provided");
 
             await ctx.replyWithVideo(videoUrl, {
@@ -30,8 +31,6 @@ const onboardingWizard = new Scenes.WizardScene(
             );
 
         } catch (error) {
-            // ⚠️ IF VIDEO FAILS, FALLBACK TO TEXT
-            // This prevents the "❌ ስህተት ተከስቷል" error
             console.log("Video failed to load (sending text instead):", error.message);
 
             await ctx.reply(
@@ -55,6 +54,7 @@ const onboardingWizard = new Scenes.WizardScene(
         await ctx.reply("እሺ! መጀመሪያ **የክርስትና ስምዎን** ያስገቡ፦");
         return ctx.wizard.next();
     },
+
     // --- Step 3: Religious Name ---
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስምዎን በጽሁፍ ያስገቡ።");
@@ -63,15 +63,42 @@ const onboardingWizard = new Scenes.WizardScene(
         return ctx.wizard.next();
     },
 
-    // --- Step 4: Formal Name ---
+    // --- Step 4: Formal Name & Group Trigger ---
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስምዎን በጽሁፍ ያስገቡ።");
         ctx.wizard.state.formalName = ctx.message.text;
+
+        // Logic Change: Instead of asking for phone, we ask for the group here
+        const buttons = GROUPS.map(g => [Markup.button.callback(g, `group_${g}`)]);
+        
+        await ctx.reply(
+            "📍 እባክዎ የሚገኙበትን **የንሰሐ ክፍል (ቡድን)** ይምረጡ፦",
+            Markup.inlineKeyboard(buttons)
+        );
+        return ctx.wizard.next();
+    },
+
+    // --- Step 5: Handle Group Selection (NEW STEP) ---
+    async (ctx) => {
+        if (!ctx.callbackQuery || !ctx.callbackQuery.data.startsWith('group_')) {
+            // If they type instead of clicking, delete their message and warn them
+            if (ctx.message) { try { await ctx.deleteMessage(); } catch (e) { } }
+            return ctx.reply("⚠️ እባክዎ ከላይ ካሉት አማራጮች የንሰሐ ክፍልዎን ይምረጡ።");
+        }
+
+        const selectedGroup = ctx.callbackQuery.data.replace('group_', '');
+        ctx.wizard.state.group = selectedGroup;
+        
+        try { 
+            await ctx.answerCbQuery();
+            await ctx.editMessageText(`✅ የተመረጠ ክፍል፦ ${selectedGroup}`); 
+        } catch (e) { }
+
         await ctx.reply("በመጨረሻም **ስልክ ቁጥርዎን** ያስገቡ (ለምሳሌ፦ 0911...)፦");
         return ctx.wizard.next();
     },
 
-    // --- Step 5: Save & Welcome ---
+    // --- Step 6: Save & Welcome ---
     async (ctx) => {
         if (!ctx.message || !ctx.message.text) return ctx.reply("እባክዎ ስልክ ቁጥርዎን ያስገቡ።");
         const phoneNumber = ctx.message.text;
@@ -81,6 +108,7 @@ const onboardingWizard = new Scenes.WizardScene(
                 telegramId: ctx.from.id,
                 formalName: ctx.wizard.state.formalName,
                 religiousName: ctx.wizard.state.religiousName,
+                group: ctx.wizard.state.group, // Added the new group data
                 phoneNumber: phoneNumber,
                 isRegistered: true
             });
@@ -89,7 +117,7 @@ const onboardingWizard = new Scenes.WizardScene(
             ctx.session.isRegistered = true;
 
             await ctx.reply(
-                `ቃልህ/ሽ ይባረክ ${ctx.wizard.state.religiousName}። ምዝገባዎ ተጠናቅቋል።\n\nከታች ያለውን ማውጫ በመጠቀም ቀጠሮ መያዝ ይችላሉ።`,
+                `ቃልህ/ሽ ይባረክ ${ctx.wizard.state.religiousName}። በ${ctx.wizard.state.group} ክፍል ምዝገባዎ ተጠናቅቋል።\n\nከታች ያለውን ማውጫ በመጠቀም ቀጠሮ መያዝ ይችላሉ።`,
                 userMenu
             );
             return ctx.scene.leave();

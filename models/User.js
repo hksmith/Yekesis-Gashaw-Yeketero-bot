@@ -5,6 +5,11 @@ const UserSchema = new mongoose.Schema({
     formalName: String,
     religiousName: String,
     phoneNumber: String,
+    group: { 
+        type: String, 
+        enum: ['ሉቃስ', 'ማርቆስ', 'ዮሐንስ', 'ማትያስ'],
+        required: true 
+    },
     isRegistered: { type: Boolean, default: false }
 });
 
