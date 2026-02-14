@@ -19,6 +19,7 @@ const adminScene = require('./scenes/adminScene');
 const adminUpdateWizard = require('./scenes/adminUpdateScene');
 const adminBlockWizard = require('./scenes/adminBlockScene');
 const adminUnblockScene = require('./scenes/adminUnblockScene');
+const updateGroupWizard = require('./scenes/updateGroupWizard');
 
 // --- SAFETY: Normalize Admin ID ---
 const ADMIN_ID = process.env.ADMIN_ID ? process.env.ADMIN_ID.trim() : "";
@@ -43,7 +44,8 @@ const stage = new Scenes.Stage([
     adminScene,
     adminUpdateWizard,
     adminBlockWizard,
-    adminUnblockScene
+    adminUnblockScene,
+    updateGroupWizard
 ]);
 
 // Handle "Home" globally for the stage
@@ -159,6 +161,8 @@ bot.hears('📋 የያዝኳቸው ቀጠሮዎች', async (ctx) => {
         ctx.reply("❌ መረጃ ማምጣት አልተቻለም።");
     }
 });
+
+bot.hears('🔄 ክፍል ይቀይሩ', (ctx) => ctx.scene.enter('UPDATE_GROUP_SCENE'));
 
 bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
     try {

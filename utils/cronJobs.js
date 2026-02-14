@@ -69,8 +69,13 @@ const setupCronJobs = (bot) => {
                 timestamp: { $gte: sevenDaysAgo }
             }).populate('userId');
 
-            if (weeklyBookings.length === 0) {
-                return await bot.telegram.sendMessage(adminId, "📊 **የሳምንቱ ማጠቃለያ**፦ በዚህ ሳምንት ምንም ቀጠሮ አልነበረም።");
+            // --- ADDED: Fetch new registrations from the last 7 days ---
+            const newUsersCount = await User.countDocuments({
+                createdAt: { $gte: sevenDaysAgo }
+            });
+
+            if (weeklyBookings.length === 0 && newUsersCount === 0) {
+                return await bot.telegram.sendMessage(adminId, "📊 **የሳምንቱ ማጠቃለያ**፦ በዚህ ሳምንት ምንም አዲስ እንቅስቃሴ አልነበረም።");
             }
 
             const stats = {
@@ -95,6 +100,9 @@ const setupCronJobs = (bot) => {
             let report = `📊 **የሳምንቱ የሥራ ማጠቃለያ**\n`;
             report += `(ካለፈው እሁድ - ዛሬ)\n`;
             report += `_______________________\n\n`;
+            
+            // --- ADDED: Display New Registrations ---
+            report += `🆕 **አዲስ የተመዘገቡ ተጠቃሚዎች፦** ${newUsersCount}\n`;
             report += `✅ **ጠቅላላ ቀጠሮዎች፦** ${stats.total}\n\n`;
             
             report += `📍 **በክፍል (Group)፦**\n`;
@@ -114,6 +122,7 @@ const setupCronJobs = (bot) => {
             console.error('Weekly Summary Cron Error:', err);
         }
     }, { scheduled: true, timezone: process.env.TIMEZONE });
+
 };
 
 module.exports = { setupCronJobs };
