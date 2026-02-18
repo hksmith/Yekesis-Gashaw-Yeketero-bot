@@ -9,7 +9,7 @@ const User = require('./models/User');
 const Booking = require('./models/Booking');
 
 // Utilities & Localization
-const { userMenu, adminMenu } = require('./utils/keyboards');
+const { getUserMenu, adminMenu } = require('./utils/keyboards');
 const { toEthioDisplay, toEthioTime } = require('./utils/ethioConverter');
 
 // Scenes
@@ -20,6 +20,16 @@ const adminUpdateWizard = require('./scenes/adminUpdateScene');
 const adminBlockWizard = require('./scenes/adminBlockScene');
 const adminUnblockScene = require('./scenes/adminUnblockScene');
 const updateGroupWizard = require('./scenes/updateGroupWizard');
+const representativeBookingWizard = require('./scenes/representativeBooking');
+
+const getSubAdminGroup = (id) => {
+    const idStr = id.toString();
+    if (idStr === process.env.SUB_ADMIN_LUKAS) return 'ሉቃስ';
+    if (idStr === process.env.SUB_ADMIN_MARKOS) return 'ማርቆስ';
+    if (idStr === process.env.SUB_ADMIN_YOHANNES) return 'ዮሐንስ';
+    if (idStr === process.env.SUB_ADMIN_MATYAS) return 'ማትያስ';
+    return null;
+};
 
 // --- SAFETY: Normalize Admin ID ---
 const ADMIN_ID = process.env.ADMIN_ID ? process.env.ADMIN_ID.trim() : "";
@@ -45,7 +55,8 @@ const stage = new Scenes.Stage([
     adminUpdateWizard,
     adminBlockWizard,
     adminUnblockScene,
-    updateGroupWizard
+    updateGroupWizard,
+    representativeBookingWizard
 ]);
 
 // Handle "Home" globally for the stage
@@ -54,14 +65,14 @@ stage.hears('🏠 ዋና ማውጫ', async (ctx) => {
     await ctx.scene.leave();
 
     // Reset/clear the session
-    if (ctx.session) {
-        ctx.session = {};
-    }
+    if (ctx.session) ctx.session = {};
 
     const isAdmin = ctx.from.id.toString() === ADMIN_ID;
+    const subAdminGroup = getSubAdminGroup(ctx.from.id);
+
     return ctx.reply(
         "🏠 ወደ ዋና ማውጫ ተመልሰዋል።",
-        isAdmin ? adminMenu : userMenu
+        isAdmin ? adminMenu : getUserMenu(subAdminGroup)
     );
 });
 
@@ -111,10 +122,11 @@ bot.use(async (ctx, next) => {
 ========================= */
 const sendMainMenu = async (ctx) => {
     const isAdmin = ctx.from.id.toString() === ADMIN_ID;
+    const subAdminGroup = getSubAdminGroup(ctx.from.id);
     const user = await User.findOne({ telegramId: ctx.from.id });
 
     let welcomeMsg = isAdmin ? "🛠 **የአስተዳዳሪ ሰሌዳ**" : `🙏 እንኳን ደህና መጡ ${user?.religiousName || ''}`;
-    return ctx.reply(welcomeMsg, isAdmin ? adminMenu : userMenu);
+    return ctx.reply(welcomeMsg, isAdmin ? adminMenu : getUserMenu(subAdminGroup));
 };
 
 /* =========================
@@ -122,6 +134,8 @@ const sendMainMenu = async (ctx) => {
 ========================= */
 bot.start(async (ctx) => {
     const user = await User.findOne({ telegramId: ctx.from.id });
+    if (getSubAdminGroup(ctx.from.id)) return sendMainMenu(ctx);
+
     if (!user || !user.isRegistered) {
         return ctx.scene.enter('ONBOARDING_SCENE');
     }
@@ -131,6 +145,18 @@ bot.start(async (ctx) => {
 /* =========================
    👤 USER ACTIONS
 ========================= */
+
+bot.hears(/^👤 ለ(.+) ክፍል ቀጠሮ$/, async (ctx) => {
+    const groupName = ctx.match[1];
+    const subAdminGroup = getSubAdminGroup(ctx.from.id);
+
+    if (subAdminGroup === groupName) {
+        return ctx.scene.enter('REPRESENTATIVE_BOOKING_SCENE');
+        return ctx.reply(`የ${groupName} ክፍል አባላትን ዝርዝር በመጫን ላይ...`);
+    } else {
+        return ctx.reply("⚠️ ይቅርታ፣ ይህንን ክፍል የማስተዳደር ስልጣን የሎትም።");
+    }
+});
 
 bot.hears('📅 ቀጠሮ ለመያዝ', (ctx) => ctx.scene.enter('BOOKING_SCENE'));
 
@@ -164,56 +190,181 @@ bot.hears('📋 የያዝኳቸው ቀጠሮዎች', async (ctx) => {
 
 bot.hears('🔄 ክፍል ይቀይሩ', (ctx) => ctx.scene.enter('UPDATE_GROUP_SCENE'));
 
+// --- 1. Cancel Booking Trigger ---
 bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
     try {
         const user = await User.findOne({ telegramId: ctx.from.id });
         if (!user) return ctx.reply("እባክዎ መጀመሪያ /start በማለት ይመዝገቡ።");
 
+        // Set session state to expect interactions
+        ctx.session = ctx.session || {};
+        ctx.session.activeOperation = 'canceling'; 
+
+        // Check if user is a Sub-Admin
+        const subAdminGroup = getSubAdminGroup(ctx.from.id);
+
+        // A) If Sub-Admin: Ask WHOSE appointment to cancel
+        if (subAdminGroup) {
+            return ctx.reply("ማንን ቀጠሮ መሰረዝ ይፈልጋሉ?", Markup.inlineKeyboard([
+                [Markup.button.callback("👤 የራሴን ቀጠሮ", "cancel_fetch_self")],
+                [Markup.button.callback("👥 የአባላትን ቀጠሮ", "cancel_fetch_members")]
+            ]));
+        }
+
+        // B) If Regular User: Go straight to their bookings
+        return fetchAndShowBookings(ctx, user._id, false);
+
+    } catch (err) {
+        console.error(err);
+        ctx.reply("❌ ሂደቱን ለመጀመር አልተቻለም።");
+    }
+});
+
+// --- 2. Action: Sub-Admin chose "Self" ---
+bot.action('cancel_fetch_self', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const user = await User.findOne({ telegramId: ctx.from.id });
+        return fetchAndShowBookings(ctx, user._id, true); // true = edit existing message
+    } catch (err) { console.error(err); }
+});
+
+// --- 3. Action: Sub-Admin chose "Members" ---
+bot.action('cancel_fetch_members', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const subAdminGroup = getSubAdminGroup(ctx.from.id);
+
+        // 1. Find all members in this group (Offline only? Or all?)
+        // Let's stick to Offline for now as discussed, or simply all users in that group
+        const memberIds = (await User.find({ group: subAdminGroup })).map(u => u._id);
+
+        if (memberIds.length === 0) {
+            return ctx.editMessageText("ℹ️ በእርስዎ ክፍል የተመዘገቡ አባላት የሉም።", Markup.inlineKeyboard([
+                [Markup.button.callback("⬅️ ተመለስ", "cancel_back_main")]
+            ]));
+        }
+
+        // 2. Fetch Active Bookings for these members
         const now = new Date();
         const bookings = await Booking.find({
-            userId: user._id,
-            userName: { $ne: "ADMIN_BLOCK" },
+            userId: { $in: memberIds },
             timestamp: { $gte: now }
         }).sort({ timestamp: 1 });
 
         if (bookings.length === 0) {
-            return ctx.reply("ℹ️ የሚሰረዝ ቀጠሮ የለም።");
+            return ctx.editMessageText(`ℹ️ በ ${subAdminGroup} ክፍል ለጊዜው የተያዘ የአባላት ቀጠሮ የለም።`, Markup.inlineKeyboard([
+                [Markup.button.callback("⬅️ ተመለስ", "cancel_back_main")]
+            ]));
         }
 
-        const buttons = bookings.map(b => {
-            return [Markup.button.callback(
-                `🗑 ሰርዝ፦ ${toEthioDisplay(b.date)} (${toEthioTime(b.startTime)})`,
-                `confirm_unbook_${b._id}`)];
-        });
+        // 3. Show List with NAMES included
+        const buttons = bookings.map(b => [
+            Markup.button.callback(
+                `🗑 ${b.religiousName || b.userName} - ${toEthioDisplay(b.date)}`,
+                `ask_confirm_unbook_${b._id}` // CHANGED: New action trigger
+            )
+        ]);
+        
+        buttons.push([Markup.button.callback("⬅️ ተመለስ", "cancel_back_main")]);
 
-        // Store this specific conversation state to identify the context
-        ctx.session = ctx.session || {};
-        ctx.session.activeOperation = 'unbooking_selection';
+        await ctx.editMessageText("ለመሰረዝ የሚፈልጉትን የአባል ቀጠሮ ይምረጡ፦", Markup.inlineKeyboard(buttons));
 
-        await ctx.reply("ለመሰረዝ የሚፈልጉትን ቀጠሮ ይምረጡ፦", Markup.inlineKeyboard(buttons));
-    } catch (err) {
-        console.error(err);
-        ctx.reply("❌ ስረዛውን ለመጀመር አልተቻለም።");
-    }
+    } catch (err) { console.error(err); }
 });
 
-bot.action(/^confirm_unbook_(.+)$/, async (ctx) => {
+// --- 4. Action: Back Button Handler ---
+bot.action('cancel_back_main', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        // Go back to the Sub-Admin choice menu
+        return ctx.editMessageText("ማንን ቀጠሮ መሰረዝ ይፈልጋሉ?", Markup.inlineKeyboard([
+            [Markup.button.callback("👤 የራሴን ቀጠሮ", "cancel_fetch_self")],
+            [Markup.button.callback("👥 የአባላትን ቀጠሮ", "cancel_fetch_members")]
+        ]));
+    } catch (e) {}
+});
+
+
+// --- 5. Helper Function: Standard Booking List ---
+async function fetchAndShowBookings(ctx, userId, isEdit = false) {
+    const now = new Date();
+    const bookings = await Booking.find({
+        userId: userId,
+        userName: { $ne: "ADMIN_BLOCK" },
+        timestamp: { $gte: now }
+    }).sort({ timestamp: 1 });
+
+    if (bookings.length === 0) {
+        const msg = "ℹ️ የሚሰረዝ ቀጠሮ የለም።";
+        if (isEdit) return ctx.editMessageText(msg);
+        return ctx.reply(msg);
+    }
+
+    const buttons = bookings.map(b => [
+        Markup.button.callback(
+            `🗑 ${toEthioDisplay(b.date)} - ${toEthioTime(b.startTime)}`,
+            `ask_confirm_unbook_${b._id}` // CHANGED: New action trigger
+        )
+    ]);
+    
+    // If sub-admin, add back button
+    if (getSubAdminGroup(ctx.from.id)) {
+        buttons.push([Markup.button.callback("⬅️ ተመለስ", "cancel_back_main")]);
+    }
+
+    const prompt = "ለመሰረዝ የሚፈልጉትን ቀጠሮ ይምረጡ፦";
+    if (isEdit) return ctx.editMessageText(prompt, Markup.inlineKeyboard(buttons));
+    return ctx.reply(prompt, Markup.inlineKeyboard(buttons));
+}
+
+
+// --- 6. Action: ASK FOR CONFIRMATION (The Safety Step) ---
+bot.action(/^ask_confirm_unbook_(.+)$/, async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const bookingId = ctx.match[1];
+        const booking = await Booking.findById(bookingId);
+
+        if (!booking) {
+            return ctx.editMessageText("⚠️ ይህ ቀጠሮ ቀድሞ ተሰርዟል ወይም አይገኝም።");
+        }
+
+        const confirmMsg = `⚠️ **እርግጠኛ ነዎት?**\n\n` +
+            `👤 ስም: ${booking.religiousName || booking.userName}\n` +
+            `📅 ቀን: ${toEthioDisplay(booking.date)}\n` +
+            `🕒 ሰዓት: ${toEthioTime(booking.startTime)}\n\n` +
+            `ይህን ቀጠሮ መሰረዝ ይፈልጋሉ?`;
+
+        await ctx.editMessageText(confirmMsg, Markup.inlineKeyboard([
+            [Markup.button.callback("✅ አዎ፣ ሰርዝ", `do_delete_${bookingId}`)],
+            [Markup.button.callback("❌ አይ፣ ተመለስ", "cancel_fetch_self")] // Or smart back logic
+        ]));
+
+    } catch (err) { console.error(err); }
+});
+
+
+// --- 7. Action: EXECUTE DELETION (Final Step) ---
+bot.action(/^do_delete_(.+)$/, async (ctx) => {
     try {
         await ctx.answerCbQuery("በሂደት ላይ...");
         const bookingId = ctx.match[1];
         const booking = await Booking.findByIdAndDelete(bookingId);
 
         if (booking) {
+            // Clear session state
             if (ctx.session) ctx.session.activeOperation = null;
 
-            await ctx.editMessageText(`✅ በ ${toEthioDisplay(booking.date)} በ ${toEthioTime(booking.startTime)} የነበረው ቀጠሮ ተሰርዟል።`);
+            await ctx.editMessageText(`✅ በ ${toEthioDisplay(booking.date)} በ ${toEthioTime(booking.startTime)} የነበረው ቀጠሮ በተሳካ ሁኔታ ተሰርዟል።`);
 
+            // Notify Admin
             await ctx.telegram.sendMessage(
-                ADMIN_ID,
-                `⚠️ **ቀጠሮ ተሰርዟል**\n👤 ${booking.userName} (${booking.religiousName})\n📅 ${toEthioDisplay(booking.date)}`
+                process.env.ADMIN_ID,
+                `🗑 **ቀጠሮ ተሰርዟል**\n👤 ${booking.religiousName || booking.userName}\n📅 ${toEthioDisplay(booking.date)} - ${toEthioTime(booking.startTime)}`
             );
         } else {
-            await ctx.reply("⚠️ ቀጠሮው ቀድሞ ተሰርዟል።");
+            await ctx.editMessageText("⚠️ ቀጠሮው ቀድሞ ተሰርዟል።");
         }
     } catch (err) {
         console.error(err);
@@ -264,14 +415,18 @@ bot.hears(/.*/, async (ctx) => {
     if (ctx.message.text.startsWith('/')) return;
 
     const isAdmin = ctx.from.id.toString() === ADMIN_ID;
+    const subAdminGroup = getSubAdminGroup(ctx.from.id);
 
     // Allowed options for users
     const userCommands = [
         '🏠 ዋና ማውጫ',
         '📅 ቀጠሮ ለመያዝ',
         '📋 የያዝኳቸው ቀጠሮዎች',
-        '❌ ቀጠሮ ለመሰረዝ'
+        '❌ ቀጠሮ ለመሰረዝ',
+        '🔄 ክፍል ይቀይሩ'
     ];
+
+    if (subAdminGroup) userCommands.push(`👤 ለ${subAdminGroup} ክፍል ቀጠሮ`);
 
     // Allowed options for admins
     const adminCommands = [
