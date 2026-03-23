@@ -111,7 +111,7 @@ bot.use(async (ctx, next) => {
 
     // 6. If not registered, cleanup and force onboarding
     if (ctx.message) {
-        try { await ctx.deleteMessage(); } catch (e) {}
+        try { await ctx.deleteMessage(); } catch (e) { }
     }
 
     return ctx.scene.enter('ONBOARDING_SCENE');
@@ -151,6 +151,11 @@ bot.hears(/^👤 ለ(.+) ክፍል ቀጠሮ$/, async (ctx) => {
     const subAdminGroup = getSubAdminGroup(ctx.from.id);
 
     if (subAdminGroup === groupName) {
+        // Leave any existing scene
+        if (ctx.session?.__scenes?.current) {
+            await ctx.scene.leave();
+        }
+        
         return ctx.scene.enter('REPRESENTATIVE_BOOKING_SCENE');
         return ctx.reply(`የ${groupName} ክፍል አባላትን ዝርዝር በመጫን ላይ...`);
     } else {
@@ -198,7 +203,7 @@ bot.hears('❌ ቀጠሮ ለመሰረዝ', async (ctx) => {
 
         // Set session state to expect interactions
         ctx.session = ctx.session || {};
-        ctx.session.activeOperation = 'canceling'; 
+        ctx.session.activeOperation = 'canceling';
 
         // Check if user is a Sub-Admin
         const subAdminGroup = getSubAdminGroup(ctx.from.id);
@@ -265,7 +270,7 @@ bot.action('cancel_fetch_members', async (ctx) => {
                 `ask_confirm_unbook_${b._id}` // CHANGED: New action trigger
             )
         ]);
-        
+
         buttons.push([Markup.button.callback("⬅️ ተመለስ", "cancel_back_main")]);
 
         await ctx.editMessageText("ለመሰረዝ የሚፈልጉትን የአባል ቀጠሮ ይምረጡ፦", Markup.inlineKeyboard(buttons));
@@ -282,9 +287,8 @@ bot.action('cancel_back_main', async (ctx) => {
             [Markup.button.callback("👤 የራሴን ቀጠሮ", "cancel_fetch_self")],
             [Markup.button.callback("👥 የአባላትን ቀጠሮ", "cancel_fetch_members")]
         ]));
-    } catch (e) {}
+    } catch (e) { }
 });
-
 
 // --- 5. Helper Function: Standard Booking List ---
 async function fetchAndShowBookings(ctx, userId, isEdit = false) {
@@ -307,7 +311,7 @@ async function fetchAndShowBookings(ctx, userId, isEdit = false) {
             `ask_confirm_unbook_${b._id}` // CHANGED: New action trigger
         )
     ]);
-    
+
     // If sub-admin, add back button
     if (getSubAdminGroup(ctx.from.id)) {
         buttons.push([Markup.button.callback("⬅️ ተመለስ", "cancel_back_main")]);
@@ -317,7 +321,6 @@ async function fetchAndShowBookings(ctx, userId, isEdit = false) {
     if (isEdit) return ctx.editMessageText(prompt, Markup.inlineKeyboard(buttons));
     return ctx.reply(prompt, Markup.inlineKeyboard(buttons));
 }
-
 
 // --- 6. Action: ASK FOR CONFIRMATION (The Safety Step) ---
 bot.action(/^ask_confirm_unbook_(.+)$/, async (ctx) => {

@@ -63,9 +63,16 @@ const bookingWizard = new Scenes.WizardScene(
 
         const buttons = [];
         const now = DateTime.now().setZone(process.env.TIMEZONE);
+        const currentHour = now.hour; // NEW: Get the current hour in 24-hour format
 
         // Generate next 14 days
         for (let i = 0; i < 14; i++) {
+            
+            // 🔒 NEW LOGIC: Stop scheduling for tomorrow (i=1) if it's 8:00 PM (20:00) or later today
+            if (i === 1 && currentHour >= 20) {
+                continue; // Skip adding tomorrow to the list
+            }
+
             const d = now.plus({ days: i });
             const config = availableDays.find(a => a.dayOfWeek === d.weekday);
 
