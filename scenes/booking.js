@@ -67,10 +67,12 @@ const bookingWizard = new Scenes.WizardScene(
 
         // Generate next 14 days
         for (let i = 0; i < 14; i++) {
-            
-            // 🔒 NEW LOGIC: Stop scheduling for tomorrow (i=1) if it's 8:00 PM (20:00) or later today
-            if (i === 1 && currentHour >= 20) {
-                continue; // Skip adding tomorrow to the list
+
+            // 🔒 NEW LOGIC: 
+            // 1. Block booking for "today" (i=0) always, because the deadline was yesterday 8:00 PM.
+            // 2. Stop scheduling for "tomorrow" (i=1) if it is 8:00 PM (20:00) or later today.
+            if (i === 0 || (i === 1 && currentHour >= 20)) {
+                continue; // Skip adding these days to the list
             }
 
             const d = now.plus({ days: i });
